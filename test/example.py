@@ -1,17 +1,15 @@
 import json
 import logging
-from threading import Thread
-from typing import Dict, List, Tuple, cast
+import sys
+from pathlib import Path
+from typing import List
 
-import torch
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    PreTrainedModel,
-    PreTrainedTokenizerBase,
-    TextIteratorStreamer,
-)
-from transformers.tokenization_utils_base import BatchEncoding
+from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam
+
+# Add parent directory to path to import utils
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils import check_gpu, start_vllm_server
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -20,48 +18,49 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _check_gpu() -> None:
-    """Check whether a GPU is available, exit if not."""
-    if torch.cuda.is_available():
-        logger.info(
-            "GPU is available and running on GPU %s", torch.cuda.get_device_name(0)
-        )
-    else:
-        logger.info("GPU is not available, exiting program")
-        exit(1)
-
-
-def _load_model(
-    model_name: str = "Qwen/Qwen2.5-7B",
-) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
-    """Load a Hugging Face model and tokenizer from cache or hub."""
+def _start_vllm_and_client(
+    model_name: str = "Qwen/Qwen2.5-7B-Instruct",
+    port: int = 8000,
+    host: str = "0.0.0.0",
+    dtype: str = "auto",
+    tensor_parallel_size: int = 1,
+) -> OpenAI:
+    """Start vLLM server and return OpenAI client."""
     try:
         cache_dir: str = "/scratch/dbansa11/hf_models"
-
-        tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
-            model_name, cache_dir=cache_dir, use_fast=True
+        
+        # Start the vLLM server
+        start_vllm_server(
+            model=model_name,
+            port=port,
+            host=host,
+            dtype=dtype,
+            tensor_parallel_size=tensor_parallel_size,
+            cache_dir=cache_dir,
         )
-        model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
-            model_name, dtype="auto", device_map="auto", cache_dir=cache_dir
+        
+        client = OpenAI(
+            api_key="", 
+            base_url=f"http://localhost:{port}/v1",
         )
-
-        return model, tokenizer
+        
+        return client
     except Exception as e:
-        logger.error(f"Error loading model: {e}")
+        logger.error(f"Error starting vLLM server: {e}")
         exit(1)
 
 
 def run_model(
-    model: PreTrainedModel,
-    tokenizer: PreTrainedTokenizerBase,
-    messages: List[Dict[str, str]],
+    client: OpenAI,
+    model_name: str,
+    messages: List[ChatCompletionMessageParam],
     stream: bool = False,
 ) -> str:
-    """Run the model with optional streaming output.
+    """Run the model via vLLM OpenAI API with optional streaming output.
 
     Args:
-        model: The loaded language model
-        tokenizer: The model tokenizer
+        client: OpenAI client connected to vLLM server
+        model_name: Name of the model being used
         messages: List of conversation messages (system, user, assistant)
         stream: If True, prints tokens as generated; if False, returns complete text
 
@@ -69,63 +68,49 @@ def run_model(
         Complete generated text as string
     """
     try:
-        prompt = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
-
-        if not isinstance(prompt, str):
-            raise ValueError(f"Expected string prompt, got {type(prompt)}")
-
-        inputs: BatchEncoding = tokenizer(prompt, return_tensors="pt").to(model.device)
-
         if stream:
-            return _generate_streaming_with_print(model, tokenizer, inputs)
+            return _generate_streaming(client, model_name, messages)
         else:
             # Non-streaming mode: return complete text
-            outputs = model.generate(**inputs, max_new_tokens=1024)  # type: ignore
-            return tokenizer.decode(outputs[0], skip_special_tokens=True)
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                max_tokens=1024,
+                temperature=0.7,
+            )
+            return response.choices[0].message.content or ""
 
     except Exception as e:
         logger.error(f"Error running model: {e}")
         return f"Error: {e}"
 
 
-def _generate_streaming_with_print(
-    model: PreTrainedModel,
-    tokenizer: PreTrainedTokenizerBase,
-    inputs: BatchEncoding,
+def _generate_streaming(
+    client: OpenAI,
+    model_name: str,
+    messages: List[ChatCompletionMessageParam],
 ) -> str:
     """Helper function for streaming generation with real-time printing."""
     try:
-        # Create a streamer that will yield tokens as they're generated
-        streamer = TextIteratorStreamer(
-            cast(AutoTokenizer, tokenizer), skip_special_tokens=True, skip_prompt=True
-        )
-
-        # Generation parameters
-        generation_kwargs = {
-            **inputs,
-            "max_new_tokens": 1024,
-            "do_sample": True,
-            "temperature": 0.7,
-            "streamer": streamer,
-        }
-
-        # Start generation in a separate thread
-        def generate() -> None:
-            model.generate(**generation_kwargs)  # type: ignore
-
-        thread = Thread(target=generate)
-        thread.start()
-
         full_response = ""
-        for new_text in streamer:
-            print(new_text, end="", flush=True)
-            full_response += new_text
+        
+        # Create streaming request
+        stream = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            max_tokens=1024,
+            temperature=0.7,
+            stream=True,
+        )
+        
+        # Print tokens as they arrive
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                print(content, end="", flush=True)
+                full_response += content
+        
         print("\n")
-
-        thread.join()
-
         return full_response
 
     except Exception as e:
@@ -137,13 +122,15 @@ def _generate_streaming_with_print(
 
 def main() -> None:
     """Main entrypoint: interactive conversation with the model."""
-    _check_gpu()
-    model, tokenizer = _load_model(model_name="Qwen/Qwen2.5-7B-Instruct")
+    check_gpu()
+    
+    model_name = "Qwen/Qwen2.5-7B-Instruct"
+    client = _start_vllm_and_client(model_name=model_name)
 
     with open("prompt.json", "r") as f:
         prompt_data = json.load(f)
 
-    messages = [{"role": "system", "content": prompt_data["system"]}]
+    messages: List[ChatCompletionMessageParam] = [{"role": "system", "content": prompt_data["system"]}]  # type: ignore[list-item]
     logger.info("Type your messages and press Enter to chat. Ctrl+C to exit.")
 
     try:
@@ -163,8 +150,8 @@ def main() -> None:
             print("[Assistant] - ", end="", flush=True)
 
             response = run_model(
-                model,
-                tokenizer,
+                client,
+                model_name,
                 messages,
                 stream=True,
             )

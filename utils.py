@@ -102,7 +102,7 @@ def start_vllm_server(
 
     logger.info("Starting vLLM server process.")
     process = subprocess.Popen(
-        cmd, env=env, stdout=None, stderr=None, start_new_session=True
+        cmd, env=env, stdout=sys.stdout, stderr=sys.stderr, start_new_session=True
     )
 
     _vllm_process = process
@@ -115,7 +115,7 @@ def start_vllm_server(
 
     logger.info(f"Waiting for server readiness at {ready_url}")
 
-    for attempt in range(180):
+    for attempt in range(500):
         if process.poll() is not None:
             logger.error("vLLM server process has terminated unexpectedly")
             logger.error("Check the error messages above for details")
