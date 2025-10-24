@@ -92,7 +92,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 ### (F) Verify PyTorch sees the GPU: 
 
-```
+``` bash
 python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
 python -c "import torch; print(torch.cuda.get_device_name(0))"
 ```
@@ -137,6 +137,13 @@ source activate venv
 ### (C) Launch vLLM
 
 ```
+export VLLM_MODEL="mistralai/Mistral-7B-Instruct-v0.2" # or Qwen/Qwen2.5-7B-Instruct
+export VLLM_PORT=8000
+export VLLM_HOST="0.0.0.0"
+export VLLM_CACHE_DIR=$SCRATCH/hf_cache_mistral # hf_cache_gwen
+mkdir -p $VLLM_CACHE_DIR
+
+# launch the server
 python -m vllm.entrypoints.openai.api_server \
   --model $VLLM_MODEL \
   --port  $VLLM_PORT \
