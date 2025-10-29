@@ -350,7 +350,7 @@ if __name__ == "__main__":
 
     # Example: run a small smoke test (uncomment to execute here)
     run_session(
-        testing_model="mistralai/Mistral-7B-Instruct-v0.2", # Qwen/Qwen2.5-7B-Instruct for local
+        testing_model="mistralai/Mistral-7B-Instruct-v0.2",  # Qwen/Qwen2.5-7B-Instruct for local
         product_limit=12,
         dataset_dir="data/amazon_history_price",
     )

@@ -3,9 +3,11 @@ name = "capstone"
 version = "0.1.0"
 description = "Capstone project for the course CS 485."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
+    "convokit>=3.5.0",
     "openai>=2.3.0",
+    "peft>=0.17.1",
     "python-dotenv>=1.1.1",
     "torch>=2.8.0",
     "transformers>=4.56.2",

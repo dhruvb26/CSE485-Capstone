@@ -16,3 +16,6 @@ runs/
 
 # DS-Store
 .DS_Store
+
+# Cache
+.cache/
