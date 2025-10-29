@@ -13,15 +13,13 @@
 
 ## Resources:
 
-- _Measuring Bargaining Abilities of LLMs:
-  A Benchmark and A Buyer-Enhancement Method_ : [paper](https://aclanthology.org/2024.findings-acl.213.pdf)
-- Jira: [board](https://capstone-fall-2025-yalin-wang.atlassian.net/jira/software/projects/SCRUM/summary)
+- [Measuring Bargaining Abilities of LLMs: A Benchmark and A Buyer-Enhancement Method](https://aclanthology.org/2024.findings-acl.213.pdf)
+- [RetinalGPT: A Retinal Clinical Preference Conversational Assistant Powered by Large Vision-Language Models](https://arxiv.org/abs/2503.03987)
+- [Jira Board](https://capstone-fall-2025-yalin-wang.atlassian.net/jira/software/projects/SCRUM/summary)
 
 > **Need help?** Check out the [ASU Research Computing guide](https://asurc.atlassian.net/wiki/spaces/RC/pages/2319417345/A+Brief+Example#Step-3---Use-/-Test) for detailed setup instructions.
 
 # Setup
-
-## IMPORTANT: Start fresh (one-time clean setup)
 
 ### (A) Get a GPU Shell on SOL
 
@@ -90,8 +88,9 @@ mamba install -y -c conda-forge \
 # Install GPU-enabled PyTorch from PyTorch's own wheel index (CUDA 12.1)
 pip uninstall -y torch torchvision torchaudio
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
 ```
+
+> **NOTE: Look at [anaconda.org](https://anaconda.org/search) for the package versions and channels.**
 
 ### (F) Verify PyTorch sees the GPU:
 
