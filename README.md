@@ -1,7 +1,5 @@
 # CSE485 Capstone
 
-## Table of Contents
-
 - [Resources](#resources)
 - [Setup](#setup)
   - [(A) Get a GPU Shell on SOL](#a-get-a-gpu-shell-on-sol)
@@ -19,7 +17,7 @@
   - [Common Issues](#common-issues)
 - [Getting Help](#getting-help)
 
-## Resources:
+## Resources
 
 - [Measuring Bargaining Abilities of LLMs: A Benchmark and A Buyer-Enhancement Method](https://aclanthology.org/2024.findings-acl.213.pdf)
 - [RetinalGPT: A Retinal Clinical Preference Conversational Assistant Powered by Large Vision-Language Models](https://arxiv.org/abs/2503.03987)
