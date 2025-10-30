@@ -2,14 +2,22 @@
 
 ## Table of Contents
 
-- [Overview](#overview)
+- [Resources](#resources)
 - [Setup](#setup)
-  - [1. Server Access](#1-server-access)
-  - [2. Resource Allocation](#2-resource-allocation)
-  - [3. Environment Setup](#3-environment-setup)
-  - [4. Project Installation](#4-project-installation)
+  - [(A) Get a GPU Shell on SOL](#a-get-a-gpu-shell-on-sol)
+  - [(B) Load required cluster modules](#b-load-required-cluster-modules)
+  - [Create and activate virtual environment](#create-and-activate-virtual-environment)
+  - [(D) Clone repo](#d-clone-repo)
+  - [(E) Install core dependencies (GPU-ready)](#e-install-core-dependencies-gpu-ready)
+  - [(F) Verify PyTorch sees the GPU](#f-verify-pytorch-sees-the-gpu)
+  - [(G) Install vLLM](#g-install-vllm)
+- [Recommendations (Optional)](#recommendations-optional)
 - [Usage](#usage)
+  - [Terminal A](#terminal-a)
+  - [Terminal B](#terminal-b)
 - [Troubleshooting](#troubleshooting)
+  - [Common Issues](#common-issues)
+- [Getting Help](#getting-help)
 
 ## Resources:
 
