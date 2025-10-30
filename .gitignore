@@ -19,3 +19,8 @@ runs/
 
 # Cache
 .cache/
+
+# Model training artifacts
+finetune/training_output/
+finetune/pretrained_models/
+finetune/tokenizers/

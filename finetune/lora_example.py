@@ -1,11 +1,24 @@
 import argparse
 import logging
+import os
+import sys
 
 import torch
 from datasets import load_dataset
 from peft import LoraConfig, PeftModel, get_peft_model
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    Trainer,
+    TrainingArguments,
+)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
 logger = logging.getLogger(__name__)
 
 
@@ -14,26 +27,29 @@ class LoRAConfig:
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen2.5-7B-Chat",
-        dataset_path: str = "data/casino/conversations.json",
+        model_name: str = "Qwen/Qwen2.5-7B-Instruct",
+        dataset_name: str = "yahma/alpaca-cleaned",
         num_epochs: int = 2,
         batch_size: int = 4,
         learning_rate: float = 2e-4,
     ):
         self.model_name = model_name
-        self.dataset_path = dataset_path
+        self.dataset_name = dataset_name
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
 
-        # Derive paths
+        script_dir = os.path.dirname(os.path.abspath(__file__))
         self.clean_model_name = model_name.split("/")[-1].replace("-", "_")
-        self.output_dir = f"./training_output/{self.clean_model_name}-lora"
-        self.model_save_path = f"./pretrained_models/{self.clean_model_name}-lora"
-        self.tokenizer_save_path = f"./tokenizers/{self.clean_model_name}-lora"
+        self.output_dir = os.path.join(script_dir, f"training_output/{self.clean_model_name}-lora")
+        self.model_save_path = os.path.join(script_dir, f"pretrained_models/{self.clean_model_name}-lora")
+        self.tokenizer_save_path = os.path.join(script_dir, f"tokenizers/{self.clean_model_name}-lora")
 
-        # Load dataset
-        self.dataset = load_dataset("json", data_files=dataset_path)["train"]
+        # Load dataset (using a small subset for testing)
+        logger.info(f"Loading dataset: {dataset_name}")
+        full_dataset = load_dataset(dataset_name, split="train")
+        # Use only first 100 examples for quick testing
+        self.dataset = full_dataset.select(range(min(100, len(full_dataset))))
 
         # LoRA configuration
         self.lora_config = LoraConfig(
@@ -70,11 +86,18 @@ def load_model_tokenizer(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+    )
+
     model = AutoModelForCausalLM.from_pretrained(
         config.model_name,
         device_map="auto",
-        load_in_4bit=True,
-        torch_dtype=torch.bfloat16,
+        quantization_config=bnb_config,
+        dtype=torch.bfloat16,
     )
 
     return model, tokenizer
@@ -86,20 +109,26 @@ def format_example(example, tokenizer):
         f"Instruction: {example['instruction']}\nInput: {example['input']}\nResponse:"
     )
     text = f"{prompt} {example['output']}"
-    return tokenizer(text, truncation=True, padding="max_length", max_length=1024)
-
-
+    tokenized = tokenizer(text, truncation=True, padding="max_length", max_length=1024)
+    tokenized["labels"] = tokenized["input_ids"].copy()
+    return tokenized
+    
 def train(config: LoRAConfig):
     """Train the model with LoRA fine-tuning."""
+    logger.info("Starting LoRA fine-tuning training")
+    logger.info(f"Loading model and tokenizer: {config.model_name}")
     model, tokenizer = load_model_tokenizer(config)
 
+    logger.info("Applying LoRA configuration to model")
     model = get_peft_model(model, config.lora_config)
     model.print_trainable_parameters()
 
+    logger.info("Tokenizing dataset")
     tokenized_dataset = config.dataset.map(
         lambda ex: format_example(ex, tokenizer), batched=False
     )
 
+    logger.info("Initializing trainer")
     trainer = Trainer(
         model=model,
         args=config.training_args,
@@ -107,10 +136,14 @@ def train(config: LoRAConfig):
         tokenizer=tokenizer,
     )
 
+    logger.info("Starting training process")
     trainer.train()
 
+    logger.info(f"Saving fine-tuned model to: {config.model_save_path}")
     model.save_pretrained(config.model_save_path)
+    logger.info(f"Saving tokenizer to: {config.tokenizer_save_path}")
     tokenizer.save_pretrained(config.tokenizer_save_path)
+    logger.info("Training completed successfully")
 
 
 def test(config: LoRAConfig, compare_base: bool = True):
@@ -139,7 +172,7 @@ def test(config: LoRAConfig, compare_base: bool = True):
             # Base model output
             logger.info("Base Model Response:")
             base = AutoModelForCausalLM.from_pretrained(
-                config.model_name, device_map="auto", torch_dtype=torch.bfloat16
+                config.model_name, device_map="auto", dtype=torch.bfloat16
             )
             inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
             base_outputs = base.generate(**inputs, max_new_tokens=100)
@@ -153,7 +186,7 @@ def test(config: LoRAConfig, compare_base: bool = True):
         # Fine-tuned model output
         logger.info("Fine-tuned Model Response:")
         base_for_lora = AutoModelForCausalLM.from_pretrained(
-            config.model_name, device_map="auto", torch_dtype=torch.bfloat16
+            config.model_name, device_map="auto", dtype=torch.bfloat16
         )
         lora_model = PeftModel.from_pretrained(base_for_lora, adapter_path)
         lora_model.eval()
@@ -183,14 +216,14 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="Qwen/Qwen2.5-7B-Chat",
-        help="Model name or path (default: Qwen/Qwen2.5-7B-Chat)",
+        default="Qwen/Qwen2.5-7B-Instruct",
+        help="Model name or path (default: Qwen/Qwen2.5-7B-Instruct)",
     )
     parser.add_argument(
         "--dataset",
         type=str,
-        default="data/casino/conversations.json",
-        help="Path to training dataset (default: data/casino/conversations.json)",
+        default="yahma/alpaca-cleaned",
+        help="HuggingFace dataset name (default: yahma/alpaca-cleaned)",
     )
     parser.add_argument(
         "--mode",
@@ -199,9 +232,14 @@ def main():
         default="test",
         help="Run mode: train, test, or both (default: test)",
     )
+    parser.add_argument(
+        "--compare-base",
+        action="store_true",
+        help="Compare base model vs fine-tuned model outputs during testing",
+    )
 
     args = parser.parse_args()
-    config = LoRAConfig(model_name=args.model, dataset_path=args.dataset)
+    config = LoRAConfig(model_name=args.model, dataset_name=args.dataset)
 
     if args.mode in ["train", "both"]:
         train(config)
