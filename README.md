@@ -21,6 +21,7 @@
 
 - [Measuring Bargaining Abilities of LLMs: A Benchmark and A Buyer-Enhancement Method](https://aclanthology.org/2024.findings-acl.213.pdf)
 - [RetinalGPT: A Retinal Clinical Preference Conversational Assistant Powered by Large Vision-Language Models](https://arxiv.org/abs/2503.03987)
+- [Build a Large Language Model](resources/build_a_llm_sebastian_raschka.pdf)
 - [Jira Board](https://capstone-fall-2025-yalin-wang.atlassian.net/jira/software/projects/SCRUM/summary)
 
 > **Need help?** Check out the [ASU Research Computing guide](https://asurc.atlassian.net/wiki/spaces/RC/pages/2319417345/A+Brief+Example#Step-3---Use-/-Test) for detailed setup instructions.
