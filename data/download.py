@@ -5,7 +5,11 @@ import shutil
 from urllib.parse import urljoin
 
 import requests
+import urllib3
 from convokit import Corpus, download
+
+# Disable SSL warnings for expired certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +45,20 @@ DATASETS = {
             "video-games.json",
         ],
     },
+    "craigslist_bargains": {
+        "name": "craigslist-bargains",
+        "description": "Craigslist bargains dataset containing negotiation dialogues between buyers and sellers from Stanford NLP.",
+        "url": "https://huggingface.co/datasets/stanfordnlp/craigslist_bargains",
+        "files_urls": {
+            "train.json": "https://worksheets.codalab.org/rest/bundles/0xd34bbbc5fb3b4fccbd19e10756ca8dd7/contents/blob/parsed.json",
+            "validation.json": "https://worksheets.codalab.org/rest/bundles/0x15c4160b43d44ee3a8386cca98da138c/contents/blob/parsed.json",
+            "test.json": "https://worksheets.codalab.org/rest/bundles/0x54d325bbcfb2463583995725ed8ca42b/contents/blob/",
+        },
+    },
 }
 
 
-def download_github_files(base_url: str, files: list, output_dir: str):
+def _download_github_files(base_url: str, files: list, output_dir: str):
     """Download files from GitHub repository using raw URLs.
 
     Args:
@@ -61,6 +75,34 @@ def download_github_files(base_url: str, files: list, output_dir: str):
         logger.info(f"Downloading {filename}...")
         try:
             response = requests.get(file_url, timeout=30)
+            response.raise_for_status()
+
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+
+            logger.info(f"✓ Downloaded {filename}")
+
+        except requests.RequestException as e:
+            logger.error(f"✗ Failed to download {filename}: {e}")
+            raise
+
+
+def _download_files_from_urls(files_urls: dict, output_dir: str):
+    """Download files from a mapping of filenames to URLs.
+
+    Args:
+        files_urls: Dictionary mapping filenames to their download URLs
+        output_dir: Directory to save downloaded files
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    for filename, url in files_urls.items():
+        output_path = os.path.join(output_dir, filename)
+
+        logger.info(f"Downloading {filename} from {url}...")
+        try:
+            # Disable SSL verification for codalab.org URLs with expired certificates
+            response = requests.get(url, timeout=60, verify=False)
             response.raise_for_status()
 
             with open(output_path, "wb") as f:
@@ -122,7 +164,15 @@ def download_dataset(dataset_name: str, overwrite: bool = False):
         base_url = dataset_info["base_url"]
         files = dataset_info["files"]
 
-        download_github_files(base_url, files, output_dir)
+        _download_github_files(base_url, files, output_dir)
+
+        logger.info(f"✓ Dataset '{dataset_name}' downloaded and saved to {output_dir}")
+    elif dataset_name == "craigslist_bargains":
+        logger.info(f"Downloading {dataset_name} dataset...")
+
+        files_urls = dataset_info["files_urls"]
+
+        _download_files_from_urls(files_urls, output_dir)
 
         logger.info(f"✓ Dataset '{dataset_name}' downloaded and saved to {output_dir}")
     else:
