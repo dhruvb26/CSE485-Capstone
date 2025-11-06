@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -128,17 +129,137 @@ class ConversationData(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+class DatasetProcessor(ABC):
+    """Abstract base class for dataset-specific processing logic."""
+
+    @abstractmethod
+    def extract_messages(
+        self, events_or_data: List[Dict[str, Any]]
+    ) -> List[MessageData]:
+        """Extract messages from dataset-specific format."""
+        pass
+
+    @abstractmethod
+    def get_item_info(self, record: Dict[str, Any]) -> Tuple[str, float, str]:
+        """Extract item information from dataset-specific format."""
+        pass
+
+    @abstractmethod
+    def is_successful(self, record: Dict[str, Any]) -> bool:
+        """Determine if negotiation was successful from dataset-specific format."""
+        pass
+
+    @abstractmethod
+    def get_conversation_metadata(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract conversation metadata (uuid, category, outcome) from dataset-specific format."""
+        pass
+
+
+class CraigslistBargainsProcessor(DatasetProcessor):
+    """Processor for Craigslist Bargains dataset format."""
+
+    def extract_messages(self, events: List[Dict[str, Any]]) -> List[MessageData]:
+        messages = []
+
+        for event in events:
+            if event.get("action") == "message" and event.get("data"):
+                agent_id = event.get("agent", 0)
+                role = "buyer" if agent_id == 0 else "seller"
+                content = event["data"].strip()
+
+                if content:
+                    try:
+                        message = MessageData(
+                            role=role,
+                            content=content,
+                            timestamp=str(event.get("time", "")),
+                        )
+                        messages.append(message)
+                    except Exception as e:
+                        logger.info(f"Warning: Invalid message data: {e}")
+                        continue
+
+        return messages
+
+    def get_item_info(self, record: Dict[str, Any]) -> Tuple[str, float, str]:
+        """Extract item information from Craigslist Bargains scenario format."""
+        try:
+            scenario = record.get("scenario", {})
+            kbs = scenario.get("kbs", [{}])
+            if kbs:
+                item = kbs[0].get("item", {})
+                title = item.get("Title", "Unknown Item")
+                price = float(item.get("Price", 0))
+
+                description = item.get("Description", [])
+                if isinstance(description, list):
+                    description = " ".join(description)
+                elif not isinstance(description, str):
+                    description = str(description)
+
+                return title, price, description
+        except Exception as e:
+            logger.info(f"Warning: Error extracting item info: {e}")
+
+        return "Unknown Item", 0.0, "No description available"
+
+    def is_successful(self, record: Dict[str, Any]) -> bool:
+        """Check if negotiation was successful in Craigslist Bargains format."""
+        outcome = record.get("outcome", {})
+        return outcome.get("reward", 0) == 1
+
+    def get_conversation_metadata(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract metadata from Craigslist Bargains format."""
+        scenario = record.get("scenario", {})
+        return {
+            "uuid": record.get("uuid", ""),
+            "category": scenario.get("category", "unknown"),
+            "outcome": record.get("outcome", {}),
+            "events": record.get("events", []),
+        }
+
+
+class ProcessorFactory:
+    """Factory class to create appropriate dataset processors."""
+
+    _processors = {
+        "craigslist_bargains": CraigslistBargainsProcessor,
+    }
+
+    @classmethod
+    def create_processor(cls, dataset_name: str) -> DatasetProcessor:
+        """Create a processor instance for the given dataset."""
+        if dataset_name not in cls._processors:
+            available = ", ".join(cls._processors.keys())
+            raise ValueError(
+                f"Unknown dataset '{dataset_name}'. Available processors: {available}"
+            )
+
+        return cls._processors[dataset_name]()
+
+    @classmethod
+    def get_available_datasets(cls) -> List[str]:
+        """Get list of supported dataset names."""
+        return list(cls._processors.keys())
+
+
 class DatasetFormatter:
     def __init__(
         self,
         data_dir: str,
         dataset_name: str,
         platform_name: str,
+        processor: DatasetProcessor = None,
     ):
         self.data_dir = Path(data_dir) / dataset_name
         self.dataset_name = dataset_name
         self.conversations: List[ConversationData] = []
         self.prompt_templates = PromptTemplates(platform_name)
+
+        if processor is None:
+            self.processor = ProcessorFactory.create_processor(dataset_name)
+        else:
+            self.processor = processor
 
     def load_data(self, split: str = "all") -> List[Dict[str, Any]]:
         data = []
@@ -165,71 +286,27 @@ class DatasetFormatter:
 
         return data
 
-    def extract_messages(self, events: List[Dict[str, Any]]) -> List[MessageData]:
-        messages = []
-
-        for event in events:
-            if event.get("action") == "message" and event.get("data"):
-                agent_id = event.get("agent", 0)
-                role = "buyer" if agent_id == 0 else "seller"
-                content = event["data"].strip()
-
-                if content:
-                    try:
-                        message = MessageData(
-                            role=role,
-                            content=content,
-                            timestamp=str(event.get("time", "")),
-                        )
-                        messages.append(message)
-                    except Exception as e:
-                        logger.info(f"Warning: Invalid message data: {e}")
-                        continue
-
-        return messages
-
-    def get_item_info(self, scenario: Dict[str, Any]) -> Tuple[str, float, str]:
-        """Extract item information from scenario."""
-        try:
-            kbs = scenario.get("kbs", [{}])
-            if kbs:
-                item = kbs[0].get("item", {})
-                title = item.get("Title", "Unknown Item")
-                price = float(item.get("Price", 0))
-
-                description = item.get("Description", [])
-                if isinstance(description, list):
-                    description = " ".join(description)
-                elif not isinstance(description, str):
-                    description = str(description)
-
-                return title, price, description
-        except Exception as e:
-            logger.info(f"Warning: Error extracting item info: {e}")
-
-        return "Unknown Item", 0.0, "No description available"
-
     def process_conversations(
         self,
         raw_data: List[Dict[str, Any]],
     ) -> None:
-        """Process raw data into structured conversations."""
+        """Process raw data into structured conversations using dataset-specific processor."""
         processed = 0
         filtered = 0
 
         for record in raw_data:
             try:
-                uuid = record.get("uuid", "")
-                scenario = record.get("scenario", {})
-                category = scenario.get("category", "unknown")
-                outcome = record.get("outcome", {})
-                events = record.get("events", [])
+                metadata = self.processor.get_conversation_metadata(record)
+                uuid = metadata.get("uuid", "")
+                category = metadata.get("category", "unknown")
+                outcome = metadata.get("outcome", {})
+                events_or_data = metadata.get("events", [])
 
-                title, price, description = self.get_item_info(scenario)
+                title, price, description = self.processor.get_item_info(record)
 
-                messages = self.extract_messages(events)
+                messages = self.processor.extract_messages(events_or_data)
 
-                successful = outcome.get("reward", 0) == 1
+                successful = self.processor.is_successful(record)
 
                 try:
                     conv_data = ConversationData(
@@ -257,9 +334,19 @@ class DatasetFormatter:
                 )
                 filtered += 1
 
-        logger.info(
-            f"Processed: {processed}, Filtered: {filtered}, Success: {sum(1 for c in self.conversations if c.successful) / len(self.conversations) * 100:.1f}%"
-        )
+        if self.conversations:
+            success_rate = (
+                sum(1 for c in self.conversations if c.successful)
+                / len(self.conversations)
+                * 100
+            )
+            logger.info(
+                f"Processed: {processed}, Filtered: {filtered}, Success: {success_rate:.1f}%"
+            )
+        else:
+            logger.info(
+                f"Processed: {processed}, Filtered: {filtered}, Success: N/A (no conversations)"
+            )
 
     def format_chatml(
         self, conversation: ConversationData, perspective: str = "buyer"
@@ -408,8 +495,10 @@ class DatasetFormatter:
 
 
 def main():
+    available_datasets = ProcessorFactory.get_available_datasets()
+
     parser = argparse.ArgumentParser(
-        description="Format negotiation dataset for instruction tuning. Run with --help for more information."
+        description="Format negotiation dataset for instruction tuning. Supports multiple dataset formats through pluggable processors."
     )
     parser.add_argument(
         "--data-dir",
@@ -419,7 +508,8 @@ def main():
     parser.add_argument(
         "--dataset-name",
         default="craigslist_bargains",
-        help="Name of the dataset (must match a folder name inside the --data-dir)",
+        choices=available_datasets,
+        help=f"Name of the dataset (must match a folder name inside the --data-dir). Available: {', '.join(available_datasets)}",
     )
     parser.add_argument(
         "--platform-name",
@@ -447,13 +537,22 @@ def main():
     parser.add_argument(
         "--max-samples",
         type=int,
-        default=50,
+        default=None,
         help="Maximum number of conversations to include in the final dataset",
     )
 
     args = parser.parse_args()
 
-    formatter = DatasetFormatter(args.data_dir, args.dataset_name, args.platform_name)
+    try:
+        processor = ProcessorFactory.create_processor(args.dataset_name)
+        logger.info(f"Using processor: {processor.__class__.__name__}")
+    except ValueError as e:
+        logger.error(f"Error: {e}")
+        return
+
+    formatter = DatasetFormatter(
+        args.data_dir, args.dataset_name, args.platform_name, processor
+    )
 
     raw_data = formatter.load_data(args.split)
     if not raw_data:
