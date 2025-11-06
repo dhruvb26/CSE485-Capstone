@@ -1,8 +1,6 @@
 ## format_dataset.py
 
-Converts raw negotiation datasets into instruction-tuning formats (Alpaca, ChatML, ShareGPT).
-
-### Key Features
+Converts raw negotiation datasets into instruction-tuning formats.
 
 ### Usage
 
@@ -11,6 +9,8 @@ python format_dataset.py \
   --data-dir data \
   --dataset-name craigslist_bargains \
   --platform-name "Craigslist" \
+  --output-dir formatted_data \
+  --split train \
   --max-samples 1000 \
   --formats alpaca
 ```
@@ -25,7 +25,7 @@ python format_dataset.py \
   - Structure: Separates "what others said" (input) vs "what you say" (output)
   - Output: 2 samples per conversation (buyer + seller perspectives)
 
-- **ChatML**: Conversational format (`messages` array with `role`/`content`)
+- **chatml**: Conversational format (`messages` array with `role`/`content`)
 
   - Purpose: Multi-turn conversation training
   - Structure: Maintains full conversational flow with system/user/assistant roles
