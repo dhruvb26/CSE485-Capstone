@@ -8,6 +8,7 @@ dependencies = [
     "convokit>=3.5.0",
     "openai>=2.3.0",
     "peft>=0.17.1",
+    "pydantic>=2.12.1",
     "python-dotenv>=1.1.1",
     "requests>=2.32.5",
     "torch>=2.8.0",
