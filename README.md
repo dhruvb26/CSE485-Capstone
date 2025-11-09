@@ -148,7 +148,6 @@ cd ~/cse485-capstone
 python main.py
 ```
 
-
 ## Recommendations (Optional)
 
 To keep the code manageable, we recommend using the [Ruff](https://marketplace.cursorapi.com/items/?itemName=charliermarsh.ruff) to check for code style issues. It can be installed in the extension marketplace of your IDE.
@@ -187,6 +186,8 @@ These are the settings for the `settings.json` file:
 
 The code routes by prefix, if `gpt-*`, the program will use ChatGPT instead of anything else.
 
+**Using Different Models**
+
 To use local Gwen, set this in `main.py`:
 
 ```python
@@ -195,6 +196,17 @@ run_session(
     product_limit=12,
     dataset_dir="data/amazon_history_price",
 )
+```
+
+**Author identity unknown**
+
+`git config --global` wants to write to `~/.gitconfig` (which lives in $HOME). On certain SOL login or compute nodes, $HOME may be unset inside your job environment (it’s a known bug with interactive sessions). So Git can’t find the right location to store the global config.
+
+To fix, run:
+``` bash 
+export HOME=/home/YOUR_ASU_ALIAS
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
 ```
 
 ## Getting Help
