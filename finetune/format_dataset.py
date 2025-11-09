@@ -66,11 +66,18 @@ class PromptTemplates:
         category: str,
         item_description: str,
     ) -> str:
-        return f"""You are a {perspective} in a negotiation on {self.platform_name} for: {item_title} (${item_price}, {category}). 
+        return f"""You are a {perspective} in a price negotiation on {self.platform_name}
+        for: {item_title} (${item_price}, {category}).
 
-                    Item description: {item_description}
+        Item description: {item_description}
 
-                    Respond to the following conversation as the {perspective} would:"""
+        Respond to the following conversation as the {perspective} would.
+        Always reason in three parts:
+
+        Thought: your inner reasoning about price and strategy.
+        Talk: your natural response.
+        Action: choose one of [BUY], [SELL], [DEAL], [REJECT], or [QUIT].
+        """
 
     def create_sharegpt_context(
         self, item_title: str, item_price: float, category: str, item_description: str
@@ -399,7 +406,11 @@ class DatasetFormatter:
 
         for msg in conversation.messages:
             if msg.role == perspective:
-                output_parts.append(f"{perspective.title()}: {msg.content}")
+                output_parts.append(
+                    f"Thought: Reason about your next move based on context.\n"
+                    f"Talk: {msg.content}\n"
+                    f"Action: Choose one valid action: [BUY], [SELL], [DEAL], [REJECT], or [QUIT]."
+                )
             else:
                 other_role = "seller" if perspective == "buyer" else "buyer"
                 input_parts.append(f"{other_role.title()}: {msg.content}")
@@ -413,8 +424,10 @@ class DatasetFormatter:
                 "category": conversation.category,
                 "successful": conversation.successful,
                 "perspective": perspective,
-            },
+                "price": conversation.item_price
+            }
         }
+
 
     def format_sharegpt(self, conversation: ConversationData) -> Dict[str, Any]:
         messages = []
@@ -448,10 +461,10 @@ class DatasetFormatter:
         }
 
     def export_data(
-        self,
-        output_dir: str = "formatted_data",
-        formats: List[str] = None,
-        max_samples: int = None,
+    self,
+    output_dir: str = "formatted_data",
+    formats: List[str] = None,
+    max_samples: int = None,
     ) -> None:
         if formats is None:
             formats = ["chatml", "alpaca", "sharegpt"]
@@ -459,15 +472,27 @@ class DatasetFormatter:
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
 
-        # Limit conversations if max_samples is specified
-        conversations_to_use = self.conversations
+        # Only use successful conversations
+        conversations_to_use = [c for c in self.conversations if c.successful]
+
         if max_samples is not None:
-            conversations_to_use = self.conversations[:max_samples]
+            conversations_to_use = conversations_to_use[:max_samples]
             logger.info(
                 f"Limiting to {len(conversations_to_use)} conversations (max_samples={max_samples})"
             )
 
         logger.info(f"Exporting data to {output_path}...")
+
+        def sanitize_text(value: Any) -> Any:
+            """Remove or escape problematic control characters and normalize whitespace."""
+            if isinstance(value, str):
+                # Replace backslashes, carriage returns, and raw newlines
+                cleaned = value.replace("\\", " ").replace("\r", "").replace("\n", " ")
+                
+                # Normalize multiple spaces into one and trim leading/trailing spaces
+                cleaned = " ".join(cleaned.split())
+                return cleaned.strip()
+            return value
 
         for format_name in formats:
             formatted_data = []
@@ -487,11 +512,22 @@ class DatasetFormatter:
                     formatted_data.append(self.format_sharegpt(conv))
 
             output_file = output_path / f"{self.dataset_name}_{format_name}.jsonl"
+
             with open(output_file, "w", encoding="utf-8") as f:
                 for item in formatted_data:
-                    f.write(json.dumps(item, ensure_ascii=False) + "\n")
+                    cleaned_item = {
+                        k: sanitize_text(v)
+                        if isinstance(v, str)
+                        else (
+                            {kk: sanitize_text(vv) for kk, vv in v.items()} if isinstance(v, dict) else v
+                        )
+                        for k, v in item.items()
+                    }
+                    json.dump(cleaned_item, f, ensure_ascii=False)
+                    f.write("\n")
 
-            logger.info(f"Saved {len(formatted_data)} examples to {output_file}")
+            logger.info(f"Saved {len(formatted_data)} valid examples to {output_file}")
+
 
 
 def main():
