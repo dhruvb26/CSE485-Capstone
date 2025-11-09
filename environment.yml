@@ -1,0 +1,31 @@
+name: venv
+channels:
+  - nvidia        # for pytorch-cuda runtime
+  - pytorch       # official PyTorch builds
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  # GPU stack (CUDA 12.1 runtime bundled)
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
+  # Core libs
+  - accelerate
+  - transformers
+  - datasets
+  - sentencepiece
+  - huggingface_hub
+  - bitsandbytes
+  - safetensors
+  - numpy
+  - pandas
+  - scipy
+  - protobuf
+  - tqdm
+  - psutil
+  - pydantic>=2,<3   # fixes your format_dataset.py import
+  # vLLM from PyPI
+  - pip:
+      - "vllm>=0.5.0"

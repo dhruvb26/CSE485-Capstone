@@ -28,7 +28,15 @@
 
 # Setup
 
-### (A) Get a GPU Shell on SOL
+### (A) Clone repo
+
+```bash
+git clone https://github.com/dhruvb26/cse485-capstone.git
+cd cse485-capstone
+
+```
+
+### (B) Get a GPU Shell on SOL
 
 ```bash
 # For new sessions
@@ -48,7 +56,7 @@ Wait until something like:
 
 > **Resource Limits**: HTC partition provides up to 240 minutes with a single A100 GPU
 
-### (B) Load required cluster modules
+### (C) Load required cluster modules
 
 ```bash
 # Load package manager
@@ -60,50 +68,21 @@ module load cuda-12.6.1-gcc-12.1.0
 module list
 ```
 
-### Create and activate virtual environment
+### (D) Install core dependencies + create and activate virtual environment
 
 ```bash
-# optional if you want to wipe old env
-mamba env remove -n venv
+mamba env remove -n venv # OPTIONAL: if you want to wipe old env
 
-# Create environment with Python 3.10
-mamba create -n venv python=3.10 -y
-
-# Activate environment
-source activate venv
+mamba env create -f environment.yml
+conda activate venv
 ```
 
-### (D) Clone repo
-
-```bash
-cd ~
-rm -rf cse485-capstone
-git clone https://github.com/dhruvb26/cse485-capstone.git
-cd cse485-capstone
-
-```
-
-### (E) Install core dependencies (GPU-ready):
-
-Correct combo for SOL and A100s. We use mamba for general libs, then pip for the CUDA 12.1 PyTorch wheel (this guarantees GPU support):
-
-```bash
-mamba install -y -c conda-forge \
-  accelerate transformers datasets bitsandbytes sentencepiece \
-  huggingface_hub tqdm numpy pandas scipy safetensors protobuf psutil
-
-# Install GPU-enabled PyTorch from PyTorch's own wheel index (CUDA 12.1)
-pip uninstall -y torch torchvision torchaudio
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-```
-
-> **NOTE: Look at [anaconda.org](https://anaconda.org/search) for the package versions and channels.**
-
-### (F) Verify PyTorch sees the GPU:
+### (E) (Optional) Verify PyTorch, CUDA, and vLLM versions:
 
 ```bash
 python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
 python -c "import torch; print(torch.cuda.get_device_name(0))"
+python -c "import vllm; print('vLLM:', vllm.__version__)"
 ```
 
 You should see something like:
@@ -111,14 +90,64 @@ You should see something like:
 ```bash
 2.x.x 12.1 True
 NVIDIA A100-SXM4-80GB
+vLLM: 0.11.0
 ```
 
-### (G) Install vLLM:
+# Usage
 
+**_Important: Open 2 terminals, one for vLLM and the other one for actual application_**
+
+### (A) Set env vars & cache dirs
+
+```bash
+export USER="ltnguy58" # IMPORTANT: put your ASU alias here
+export VLLM_MODEL="mistralai/Mistral-7B-Instruct-v0.2" # or Qwen/Qwen2.5-7B-Instruct
+export VLLM_PORT=8000
+export VLLM_HOST="0.0.0.0"
+export VLLM_CACHE_DIR=$SCRATCH/$USER/hf_cache_mistral # or hf_cache_gwen
+mkdir -p $VLLM_CACHE_DIR
 ```
-pip install "vllm>=0.5.0" --extra-index-url https://download.pytorch.org/whl/cu121
-python -c "import vllm; print('vLLM:', vllm.__version__)"
+
+### (B) Load modules + env
+
+```bash
+module load mamba/latest
+module load cuda-12.1.1-gcc-12.1.0
+mamba env create -f environment.yml
+conda activate venv
 ```
+
+## Terminal A
+### Launch vLLM
+
+``` bash
+# launch the server
+python -m vllm.entrypoints.openai.api_server \
+  --model $VLLM_MODEL \
+  --port  $VLLM_PORT \
+  --dtype float16 \
+  --tensor-parallel-size 1 \
+  --download-dir $VLLM_CACHE_DIR
+```
+
+This is going to run the vLLM server locally. Initalizing the model takes a while, you are free to proceed if you see this message:
+
+```bash
+...
+(APIServer pid=2689620) INFO:     Started server process [2689620]
+(APIServer pid=2689620) INFO:     Waiting for application startup.
+(APIServer pid=2689620) INFO:     Application startup complete.
+```
+
+## Terminal B
+
+### Start the chatbot
+
+```bash
+cd ~/cse485-capstone
+python main.py
+```
+
 
 ## Recommendations (Optional)
 
@@ -140,95 +169,6 @@ These are the settings for the `settings.json` file:
   "ruff.organizeImports": true,
 ```
 
-# Usage
-
-**_Important: Open 2 terminals, one for vLLM and the other one for actual application_**
-
-## Terminal A
-
-### (A) Set env vars & cache dirs
-
-```bash
-export VLLM_MODEL="Qwen/Qwen2.5-7B-Instruct"   # or Qwen/Qwen2.5-7B-Chat
-export VLLM_PORT=8000
-export VLLM_HOST="0.0.0.0"
-export VLLM_CACHE_DIR=$SCRATCH/hf_cache
-mkdir -p "$VLLM_CACHE_DIR"
-```
-
-### (B) Load modules + env
-
-```bash
-module load mamba/latest
-module load cuda-12.1.1-gcc-12.1.0
-source activate venv
-```
-
-### (C) Launch vLLM
-
-```
-export VLLM_MODEL="mistralai/Mistral-7B-Instruct-v0.2" # or Qwen/Qwen2.5-7B-Instruct
-export VLLM_PORT=8000
-export VLLM_HOST="0.0.0.0"
-export VLLM_CACHE_DIR=$SCRATCH/hf_cache_mistral # hf_cache_gwen
-mkdir -p $VLLM_CACHE_DIR
-
-# launch the server
-python -m vllm.entrypoints.openai.api_server \
-  --model $VLLM_MODEL \
-  --port  $VLLM_PORT \
-  --dtype float16 \
-  --tensor-parallel-size 1 \
-  --download-dir $VLLM_CACHE_DIR
-```
-
-This is going to run the vLLM server with Gwen running locally. Initalizing the model takes a while, you are free to proceed if you see this message:
-
-```bash
-...
-(APIServer pid=2689620) INFO:     Started server process [2689620]
-(APIServer pid=2689620) INFO:     Waiting for application startup.
-(APIServer pid=2689620) INFO:     Application startup complete.
-```
-
-(Optional) You can also run vLLM in the background
-
-```bash
-nohup python -m vllm.entrypoints.openai.api_server \
-  --model $VLLM_MODEL --port $VLLM_PORT \
-  --dtype float16 --tensor-parallel-size 1 \
-  --download-dir $VLLM_CACHE_DIR > vllm.log 2>&1 &
-tail -f vllm.log    # to watch logs
-# later: pkill -f vllm.entrypoints.openai.api_server
-```
-
-## Terminal B
-
-### (A) Run the app
-
-```bash
-interactive -p htc -t 2:00:00 --gres=gpu:a100:1
-module load mamba/latest
-module load cuda-12.1.1-gcc-12.1.0
-source activate venv
-cd ~/cse485-capstone
-python main.py
-```
-
-**Start the chatbot:**
-
-```bash
-python main.py
-```
-
-This launches the interactive chat interface with the Qwen2.5-7B-Instruct model, enabling you to engage in conversations and test the negotiation capabilities.
-
-Make sure `main.py` uses:
-
-```python
-testing_model = "Qwen/Qwen2.5-7B-Instruct"
-```
-
 ## Troubleshooting
 
 ### Common Issues
@@ -237,11 +177,6 @@ testing_model = "Qwen/Qwen2.5-7B-Instruct"
 
 - Ensure Cisco VPN is active before SSH attempts
 - Verify your ASU credentials are correct
-
-**Resource Allocation:**
-
-- If GPU allocation fails, try requesting during off-peak hours
-- Check current cluster usage with `squeue`
 
 **Environment Issues:**
 
