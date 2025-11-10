@@ -15,6 +15,12 @@ python format_dataset.py \
   --formats alpaca
 ```
 
+Quick check: 
+
+``` bash 
+head -n 2 formatted_data/craigslist_bargains_alpaca.jsonl | jq .
+```
+
 > **NOTE:** Run the script with `--help` for more information.
 
 ### Format Differences & Purposes

@@ -7,3 +7,14 @@
 | **CaSiNo: A Corpus of Campsite Negotiation Dialogues for Automatic Negotiation Systems** | Dialogue of 1030 negotiations where two participants take the roles of campsite neighbors and negotiate for resources                                                                                                        | Kushal Chawla, Jaysa Ramirez, Rene Clever, Gale Lucas, Jonathan May, Jonathan Gratch | [Publication](https://aclanthology.org/2021.naacl-main.254/) / [ConvoKit](https://convokit.cornell.edu/documentation/casino-corpus.html#:~:text=Data%20License-,CaSiNo%20Corpus,Association%20for%20Computational%20Linguistics.) | [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/)    |
 | **Deal or No Deal Game Data**                                                            | Decisions made by contestants in the Deal or No Deal gameshow from Netherlands (51), Germany (47), and the United States (53)                                                                                                | Thierry Post, Martijn J. van den Assem, Guido Baltussen, Richard H. Thaler           | [Kaggle](https://www.kaggle.com/datasets/jaredstock/deal-or-no-deal-game-data) / [OpenICPSR](https://www.openicpsr.org/openicpsr/project/113232/version/V1/view;jsessionid=A9BF239BFD4C286A090FA82FA2EC1113)                      | [Creative Commons Attribution 4.0 International Public License](https://creativecommons.org/licenses/by/4.0/) |
 | **StanfordNLP - Craigslist Bargains**                                                    | Dialogues between two agents, a buyer and a seller, that negotiate over the price of an item for sale                                                                                                                        | He He, Derek Chen, Anusha Balakrishnan, Percy Liang                                  | [HuggingFace](https://huggingface.co/datasets/stanfordnlp/craigslist_bargains) / [Paper](https://arxiv.org/pdf/1808.09637)                                                                                                        | Unknown                                                                                                       |
+
+
+## Usage 
+
+``` bash
+python download.py --dataset casino
+
+python download.py --dataset amazon_history_price
+
+python download.py --dataset craigslist_bargains
+```
