@@ -74,6 +74,7 @@ module list
 mamba env remove -n venv # OPTIONAL: if you want to wipe old env
 
 mamba env create -f environment.yml
+
 conda activate venv
 ```
 

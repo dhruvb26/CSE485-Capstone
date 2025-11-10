@@ -1,12 +1,8 @@
-## format_dataset.py
-
-Converts raw negotiation datasets into instruction-tuning formats.
-
-### Usage
+## Format Data
 
 ```bash
 python format_dataset.py \
-  --data-dir data \
+  --data-dir ../data \
   --dataset-name craigslist_bargains \
   --platform-name "Craigslist" \
   --output-dir formatted_data \
@@ -15,9 +11,9 @@ python format_dataset.py \
   --formats alpaca
 ```
 
-Quick check: 
+Quick check:
 
-``` bash 
+```bash
 head -n 2 formatted_data/craigslist_bargains_alpaca.jsonl | jq .
 ```
 
@@ -43,3 +39,18 @@ head -n 2 formatted_data/craigslist_bargains_alpaca.jsonl | jq .
   - Output: 1 sample per conversation (full dialogue)
 
 Files saved as: `{dataset_name}_{format}.jsonl` in the output directory.
+
+---
+
+## Fine tune Gwen
+
+```bash
+python gwen.py \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --dataset finetune/formatted_data/craigslist_bargains_alpaca.jsonl \
+  --mode train
+```
+
+Adapter files should be located in `/gwen_adapter_v0`
+
+- [TODO] Post evals

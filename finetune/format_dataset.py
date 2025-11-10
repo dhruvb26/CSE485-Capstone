@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -199,6 +200,11 @@ class CraigslistBargainsProcessor(DatasetProcessor):
                 price = float(item.get("Price", 0))
 
                 description = item.get("Description", [])
+                
+                max_len = 400
+                if len(description) > max_len:
+                    description = description[:max_len].rsplit(" ", 1)[0] + "..."
+
                 if isinstance(description, list):
                     description = " ".join(description)
                 elif not isinstance(description, str):
@@ -292,6 +298,34 @@ class DatasetFormatter:
                 logger.info(f"Warning: {filepath} not found")
 
         return data
+
+    def _infer_action(self, perspective: str, talk_text: str, category: str) -> str:
+        """
+        Very simple action inference:
+        - If talk contains a dollar amount, emit [BUY]/[SELL] with that price based on perspective.
+        - If 'deal' in talk, emit [DEAL] with last mentioned price if present; else generic [DEAL] $0.
+        - Else [REJECT].
+        """
+        # Grab the last price mention like $7 or 7 or 7.00
+        m = re.findall(r"\$?\s*(\d+(?:\.\d{1,2})?)", talk_text)
+        price = m[-1] if m else None
+
+        talk_lower = talk_text.lower()
+        codename = f"{category}_1"
+
+        if "deal" in talk_lower and price:
+            return f"[DEAL] ${price} (1x {codename})"
+
+        if price:
+            if perspective == "buyer":
+                return f"[BUY] ${price} (1x {codename})"
+            else:
+                return f"[SELL] ${price} (1x {codename})"
+
+        if "deal" in talk_lower:
+            return f"[DEAL] $0 (1x {codename})"
+
+        return "[REJECT]"
 
     def process_conversations(
         self,
@@ -390,9 +424,7 @@ class DatasetFormatter:
             },
         }
 
-    def format_alpaca(
-        self, conversation: ConversationData, perspective: str = "buyer"
-    ) -> Dict[str, Any]:
+    def format_alpaca(self, conversation: ConversationData, perspective: str = "buyer") -> List[Dict[str, Any]]:
         instruction = self.prompt_templates.create_alpaca_instruction(
             perspective,
             conversation.item_title,
@@ -401,32 +433,42 @@ class DatasetFormatter:
             conversation.item_description,
         )
 
-        input_parts = []
-        output_parts = []
+        samples: List[Dict[str, Any]] = []
+        msgs = conversation.messages
+        other_role = "seller" if perspective == "buyer" else "buyer"
 
-        for msg in conversation.messages:
-            if msg.role == perspective:
-                output_parts.append(
-                    f"Thought: Reason about your next move based on context.\n"
-                    f"Talk: {msg.content}\n"
-                    f"Action: Choose one valid action: [BUY], [SELL], [DEAL], [REJECT], or [QUIT]."
-                )
-            else:
-                other_role = "seller" if perspective == "buyer" else "buyer"
-                input_parts.append(f"{other_role.title()}: {msg.content}")
+        # create one sample for each message authored by `perspective`
+        for i, msg in enumerate(msgs):
+            if msg.role != perspective:
+                continue
 
-        return {
-            "instruction": instruction,
-            "input": "\n".join(input_parts),
-            "output": "\n".join(output_parts),
-            "metadata": {
-                "uuid": conversation.uuid,
-                "category": conversation.category,
-                "successful": conversation.successful,
-                "perspective": perspective,
-                "price": conversation.item_price
-            }
-        }
+            # context = all previous messages (only show the other side's lines)
+            context = []
+            for prev in msgs[:i]:
+                if prev.role != perspective:
+                    context.append(f"{prev.role.title()}: {prev.content}")
+
+            thought = "Think about your next move based on the context."
+            talk = msg.content.replace("\r", " ").replace("\n", " ").rstrip("\\").strip()
+            action = self._infer_action(perspective, talk, conversation.category)
+
+            output = f"Thought: {thought}\nTalk: {talk}\nAction: {action}"
+
+            samples.append({
+                "instruction": instruction,
+                "input": "\n".join(context),
+                "output": output,
+                "metadata": {
+                    "uuid": conversation.uuid,
+                    "category": conversation.category,
+                    "successful": conversation.successful,
+                    "perspective": perspective,
+                    "price": conversation.item_price,
+                },
+            })
+
+        return samples
+
 
 
     def format_sharegpt(self, conversation: ConversationData) -> Dict[str, Any]:
@@ -484,15 +526,15 @@ class DatasetFormatter:
         logger.info(f"Exporting data to {output_path}...")
 
         def sanitize_text(value: Any) -> Any:
-            """Remove or escape problematic control characters and normalize whitespace."""
             if isinstance(value, str):
-                # Replace backslashes, carriage returns, and raw newlines
-                cleaned = value.replace("\\", " ").replace("\r", "").replace("\n", " ")
-                
-                # Normalize multiple spaces into one and trim leading/trailing spaces
-                cleaned = " ".join(cleaned.split())
+                cleaned = value.replace("\r\n", "\n").replace("\r", "\n")
+                cleaned = re.sub(r"[ \t]+", " ", cleaned)
+                cleaned = "\n".join(line.strip() for line in cleaned.split("\n"))
+                # Remove trailing backslashes that leak from source
+                cleaned = re.sub(r"\\+$", "", cleaned)
                 return cleaned.strip()
             return value
+
 
         for format_name in formats:
             formatted_data = []
@@ -504,8 +546,8 @@ class DatasetFormatter:
 
             elif format_name == "alpaca":
                 for conv in conversations_to_use:
-                    formatted_data.append(self.format_alpaca(conv, "buyer"))
-                    formatted_data.append(self.format_alpaca(conv, "seller"))
+                    formatted_data.extend(self.format_alpaca(conv, "buyer"))
+                    formatted_data.extend(self.format_alpaca(conv, "seller"))
 
             elif format_name == "sharegpt":
                 for conv in conversations_to_use:
