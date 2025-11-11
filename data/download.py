@@ -6,6 +6,8 @@ from urllib.parse import urljoin
 
 import requests
 import urllib3
+import gzip
+import shutil
 from convokit import Corpus, download
 
 # Disable SSL warnings for expired certificates
@@ -55,6 +57,15 @@ DATASETS = {
             "test.json": "https://worksheets.codalab.org/rest/bundles/0x54d325bbcfb2463583995725ed8ca42b/contents/blob/",
         },
     },
+    "ebay_best_offer": {
+        "name": "eBay Best Offer Bargaining Data",
+        "description": "eBay Best Offer Bargaining data containing a product, its listed price, and metadata as well as a buyer offer which in some cases leads to a sequential seller counteroffer and a deal.",
+        "url": "https://www.nber.org/research/data/best-offer-sequential-bargaining",
+        "files_urls": {
+            "anon_bo_lists.csv.gz": "https://nber.org/bargaining/anon_bo_lists.csv.gz",
+            "anon_bo_threads.csv.gz": "https://nber.org/bargaining/anon_bo_threads.csv.gz"
+        }
+    }
 }
 
 
@@ -175,6 +186,26 @@ def download_dataset(dataset_name: str, overwrite: bool = False):
         _download_files_from_urls(files_urls, output_dir)
 
         logger.info(f"✓ Dataset '{dataset_name}' downloaded and saved to {output_dir}")
+    elif dataset_name == "ebay_best_offer":
+        logger.info(f"Donwloading {dataset_name} dataset...")
+
+        files_urls = dataset_info["files_urls"]
+
+        _download_files_from_urls(files_urls, output_dir)
+
+        #unzip .gz files
+        for file_name in files_urls:
+            if file_name.endswith(".gz"):
+                logger.info(f"Unzipping {file_name}...")
+                file_path = os.path.join(output_dir, file_name)
+                output_path = os.path.join(output_dir, file_name[:-3])
+                try:
+                    with gzip.open(file_path, "rb") as file_in:
+                        with open(output_path, "wb") as file_out:
+                            shutil.copyfileobj(file_in, file_out)
+                except Exception as e:
+                    logger.error(f"Failed to unzip {file_name}: {e}")
+
     else:
         raise ValueError(f"Dataset '{dataset_name}' not supported.")
 

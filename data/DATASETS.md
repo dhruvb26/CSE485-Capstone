@@ -17,4 +17,8 @@ python download.py --dataset casino
 python download.py --dataset amazon_history_price
 
 python download.py --dataset craigslist_bargains
+
+python download.py --dataset ebay_best_offer
 ```
+
+*Note the ebay_best_offer dataset is quite sizeable
