@@ -21,4 +21,4 @@ python download.py --dataset craigslist_bargains
 python download.py --dataset ebay_best_offer
 ```
 
-*Note the ebay_best_offer dataset is quite sizeable
+*Note the ebay_best_offer includes two .gz files (which will then be unzipped). One of size 4.15GB and one of size 1.28GB
