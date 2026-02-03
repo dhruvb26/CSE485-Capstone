@@ -16,6 +16,7 @@ runs/
 
 # DS-Store
 .DS_Store
+__MACOSX/
 
 # Cache
 .cache/
