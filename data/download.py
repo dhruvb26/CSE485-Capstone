@@ -1,13 +1,13 @@
 import argparse
+import gzip
 import logging
 import os
 import shutil
+import zipfile
 from urllib.parse import urljoin
 
 import requests
 import urllib3
-import gzip
-import shutil
 from convokit import Corpus, download
 
 # Disable SSL warnings for expired certificates
@@ -63,9 +63,28 @@ DATASETS = {
         "url": "https://www.nber.org/research/data/best-offer-sequential-bargaining",
         "files_urls": {
             "anon_bo_lists.csv.gz": "https://nber.org/bargaining/anon_bo_lists.csv.gz",
-            "anon_bo_threads.csv.gz": "https://nber.org/bargaining/anon_bo_threads.csv.gz"
-        }
-    }
+            "anon_bo_threads.csv.gz": "https://nber.org/bargaining/anon_bo_threads.csv.gz",
+        },
+    },
+    "dnd": {
+        "name": "Deal or No Deal Negotiation Dataset",
+        "description": "Facebook Research Deal or No Deal dataset containing multi-issue bargaining dialogues where two agents negotiate to split a set of items (books, hats, balls) with different values.",
+        "url": "https://github.com/facebookresearch/end-to-end-negotiator",
+        "base_url": "https://raw.githubusercontent.com/facebookresearch/end-to-end-negotiator/master/src/data/negotiate/",
+        "files": [
+            "data.txt",
+            "selfplay.txt",
+            "test.txt",
+            "train.txt",
+            "val.txt",
+        ],
+    },
+    "ji": {
+        "name": "Job Interview Negotiation Dataset",
+        "description": "Human-human negotiation dialogue dataset in a job interview scenario featuring dialogue act-based breakdown detection. From EACL 2021 paper.",
+        "url": "https://github.com/gucci-j/negotiation-breakdown-detection",
+        "zip_url": "https://raw.githubusercontent.com/gucci-j/negotiation-breakdown-detection/main/data.zip",
+    },
 }
 
 
@@ -193,7 +212,7 @@ def download_dataset(dataset_name: str, overwrite: bool = False):
 
         _download_files_from_urls(files_urls, output_dir)
 
-        #unzip .gz files
+        # unzip .gz files
         for file_name in files_urls:
             if file_name.endswith(".gz"):
                 logger.info(f"Unzipping {file_name}...")
@@ -205,6 +224,51 @@ def download_dataset(dataset_name: str, overwrite: bool = False):
                             shutil.copyfileobj(file_in, file_out)
                 except Exception as e:
                     logger.error(f"Failed to unzip {file_name}: {e}")
+
+    elif dataset_name == "dnd":
+        logger.info(f"Downloading {dataset_name} dataset...")
+
+        base_url = dataset_info["base_url"]
+        files = dataset_info["files"]
+
+        _download_github_files(base_url, files, output_dir)
+
+        logger.info(f"✓ Dataset '{dataset_name}' downloaded and saved to {output_dir}")
+
+    elif dataset_name == "ji":
+        logger.info(f"Downloading {dataset_name} dataset...")
+
+        zip_url = dataset_info["zip_url"]
+        os.makedirs(output_dir, exist_ok=True)
+
+
+        zip_path = os.path.join(output_dir, "data.zip")
+        logger.info(f"Downloading data.zip from {zip_url}...")
+        try:
+            response = requests.get(zip_url, timeout=60)
+            response.raise_for_status()
+
+            with open(zip_path, "wb") as f:
+                f.write(response.content)
+
+            logger.info("✓ Downloaded data.zip")
+
+        except requests.RequestException as e:
+            logger.error(f"✗ Failed to download data.zip: {e}")
+            raise
+        logger.info("Extracting data.zip...")
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(output_dir)
+
+            os.remove(zip_path)
+            logger.info("✓ Extracted and cleaned up data.zip")
+
+        except zipfile.BadZipFile as e:
+            logger.error(f"✗ Failed to extract data.zip: {e}")
+            raise
+
+        logger.info(f"✓ Dataset '{dataset_name}' downloaded and saved to {output_dir}")
 
     else:
         raise ValueError(f"Dataset '{dataset_name}' not supported.")
