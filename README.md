@@ -24,6 +24,7 @@
 - [Build a Large Language Model](resources/build_a_llm_sebastian_raschka.pdf)
 - [Build a LLM Notebook](https://colab.research.google.com/drive/1WKpDbbpPdSMjzYZv2TnnGPFNX9yTPnQM?authuser=3)
 - [Jira Board](https://capstone-fall-2025-yalin-wang.atlassian.net/jira/software/projects/SCRUM/summary)
+- Fork of the [SysEval-NegoLLMs](https://github.com/dhruvb26/SysEval-NegoLLMs) repository
 
 > **Need help?** Check out the [ASU Research Computing guide](https://asurc.atlassian.net/wiki/spaces/RC/pages/2319417345/A+Brief+Example#Step-3---Use-/-Test) for detailed setup instructions.
 
