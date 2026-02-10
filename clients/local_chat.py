@@ -1,4 +1,6 @@
 import logging
+import requests
+import json
 
 import requests
 from dotenv import load_dotenv
@@ -13,8 +15,10 @@ class LocalChat:
         self.model: str = model
         self.base_url: str = base_url
 
-    def chat(self, instructions: str, messages: list[dict]) -> str:
+    def chat(self, instructions: str, messages: list[dict], temperature = 0.00, top_p = 1.00) -> str:
         """Send a query using Chat Completions and return assistant content."""
+
+        print(f'-------------------\n{messages}\n--------------------------------')
         try:
             r = requests.post(
                 f"{self.base_url}/chat/completions",
@@ -29,14 +33,43 @@ class LocalChat:
                         ],
                     ],
                     "max_tokens": 1024,
-                    "temperature": 0.0,
+                    "temperature": temperature,
+                    "top_p": top_p
                 },
                 timeout=120,
             )
-            r.raise_for_status()
+            if r.status_code != 200:
+                print("Status:", r.status_code)
+                print("Response:", r.text)
+                r.raise_for_status()
             data = r.json()
             return (data["choices"][0]["message"]["content"] or "").strip()
-        except Exception:
+        except Exception as e:
             logger.info("Error sending query to LocalChat. Returning empty string.")
+            print(f"Error in LocalChat: {e}")
             return ""
         return ""
+
+def test_local():
+    model = LocalChat("mistralai/Mistral-7B-Instruct-v0.2", "http://127.0.0.1:8000/v1")
+    out = model.chat("You are a cat", [{"role": "user", "content": "Bark"}])
+    print(out)
+
+    url = "http://127.0.0.1:8000/v1/chat/completions"
+
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": "mistralai/Mistral-7B-Instruct-v0.2",
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Explain how transformers work in simple terms."}
+        ],
+        "temperature": 0.7
+    }
+
+    response = requests.post(url, headers=headers, data=json.dumps(data))
+    print(response.json())
+

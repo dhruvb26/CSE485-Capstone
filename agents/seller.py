@@ -61,9 +61,9 @@ Now, I play the role of buyer and you play the role of seller. We are going to n
             },
         ]
 
-    def chat(self) -> str:
+    def chat(self, temperature = 0.00, top_p = 1.00) -> str:
         """Generate seller's next response."""
-        response = self.client.chat(self.system_prompt, self.history)
+        response = self.client.chat(self.system_prompt, self.history, temperature=temperature, top_p=top_p)
         # Add to history
         self.history.append({"role": "assistant", "content": response})
         return response

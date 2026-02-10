@@ -37,6 +37,8 @@ def run_dialog(
     C: float,
     max_turns: int = 12,
     log_file: Path | None = None,
+    temperature = 0.00,
+    top_p = 1.00
 ) -> Dict:
     """Run negotiation dialog between buyer and seller agents."""
     import re
@@ -72,7 +74,7 @@ def run_dialog(
     for t in range(1, max_turns + 1):
         # Buyer turn
         log_print(f"\n--- Turn {t} (Buyer) ---")
-        b_out = buyer.chat()
+        b_out = buyer.chat(temperature=temperature, top_p=top_p)
         b_act, b_price = extract_action_and_price(b_out)
         outcome["turns"] = t * 2 - 1
 
@@ -114,7 +116,7 @@ def run_dialog(
         # Seller turn
         log_print(f"\n--- Turn {t} (Seller) ---")
         seller.receive_message(b_out)
-        s_out = seller.chat()
+        s_out = seller.chat(temperature=temperature, top_p=top_p)
         s_act, s_price = extract_action_and_price(s_out)
         outcome["turns"] = t * 2
 
@@ -181,7 +183,7 @@ def run_dialog(
     return outcome
 
 
-def run_session(testing_model: str, product_limit: int, dataset_dir: str) -> Dict:
+def run_session(testing_model: str, product_limit: int, dataset_dir: str, base_url: str) -> Dict:
     """
     Replicates the paper's first experiment with two configurations:
       - Config A: Buyer = testing_model, Seller = default_model (gpt-4o)
@@ -189,7 +191,7 @@ def run_session(testing_model: str, product_limit: int, dataset_dir: str) -> Dic
     Uses B = 0.8 * highest_price, C = lowest_price, max_turns=12.
     Aggregates SP/SNP, valid_rate, deal_rate over ALL, MI, CI.
     """
-    default_model = "gpt-4o"
+    default_model = "mistralai/Mistral-7B-Instruct-v0.2"
     f = 0.8
     max_turns = 12
 
@@ -198,10 +200,10 @@ def run_session(testing_model: str, product_limit: int, dataset_dir: str) -> Dic
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     session_log_file = runs_dir / f"session_{timestamp}.log"
 
-    buyerA_client = _get_client(testing_model)
-    sellerA_client = _get_client(default_model)
-    buyerB_client = _get_client(default_model)
-    sellerB_client = _get_client(testing_model)
+    buyerA_client = _get_client(testing_model, base_url)
+    sellerA_client = _get_client(default_model, base_url)
+    buyerB_client = _get_client(default_model, base_url)
+    sellerB_client = _get_client(testing_model, base_url)
 
     agg_A, agg_B = {}, {}
 
@@ -351,6 +353,7 @@ if __name__ == "__main__":
     # Example: run a small smoke test (uncomment to execute here)
     run_session(
         testing_model="mistralai/Mistral-7B-Instruct-v0.2",  # Qwen/Qwen2.5-7B-Instruct for local
-        product_limit=12,
+        product_limit=10,
         dataset_dir="data/amazon_history_price",
+        base_url="http://127.0.0.1:8000"
     )

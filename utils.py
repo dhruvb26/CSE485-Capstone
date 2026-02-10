@@ -96,7 +96,7 @@ def start_vllm_server(
     logger.info(f"Starting vLLM server with model: {model}")
     logger.info(f"Cache directory: {cache_dir}")
     logger.info(f"Serving at: http://{host}:{port}\n")
-
+    
     env = os.environ.copy()
     env["HF_HOME"] = cache_dir
 
