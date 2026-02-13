@@ -61,7 +61,7 @@ class GRPO:
     def add_run(self):
         self.run_incrementer += 1
 
-#Helper function used to convert vllm (chat) style payload to actual model prompt
+#Helper function used to convert vllm (chat) style payload to actual model prompt, takes input package as http_package
 def chat_http_package_to_model_input(tokenizer, http_package):
     #extract messages field
     messages = http_package['messages']
@@ -74,7 +74,7 @@ def chat_http_package_to_model_input(tokenizer, http_package):
 
     return (prompt_tokens, decoded)
 
-#Helper function used to convert vllm (chat) style payload to actual model output
+#Helper function used to convert vllm (chat) style payload to actual model output, takes output package as http_package
 def chat_http_package_from_model_output(tokenizer, http_package):
     # Extract the text from response
     response_text = http_package["choices"][0]["message"]["content"]
@@ -108,6 +108,29 @@ def extract_turns_from_all_messages(tokenizer_buyer, tokenizer_seller, negotiati
             seller_log_decoded.append((input_decoded, output_decoded))
     
     return (buyer_log_encoded, seller_log_encoded, buyer_log_decoded, seller_log_decoded)
+
+
+#This function takes in a full negotiation log as well as the output metrics, and aims to return 3 lists for the buyer agents, the reward for each input->output pair is the same as the terminal reward
+def extract_input_output_tadvanatge_list(tokenizer, negotiation_log, reward_metric, reward_average, seller: bool) -> tuple:
+    queries = []
+    responses = []
+    advantages = []
+    reward = reward_metric["NPb"]
+    advantage = reward - reward_average
+    start = 0
+    if seller:
+        start = 1
+    for i in range(start=start, stop=len(negotiation_log), step=2):
+        input_tokens, temp = chat_http_package_to_model_input(tokenizer=tokenizer, http_package=negotiation_log[i][0])
+        output_tokens, temp = chat_http_package_from_model_output(tokenizer=tokenizer, http_package=negotiation_log[i][1])
+        queries.append(input_tokens)
+        responses.append(output_tokens)
+        advantages.append(advantage)
+
+    return queries, responses, advantages
+
+
+def update_model(queries, responses, advantage):
 
 
 
@@ -146,6 +169,12 @@ def run_single_grpo(GRPO, item, max_turns: int):
 
     outcomes = {}
     metrics = {}
+    #runs includes the negotiation log, outcome, and metrics for each negotiation
+    runs = []
+    #tracks the sum of buyer reward over all sessions
+    buyer_reward_sum = 0.00
+    #tracks the sum of seller reward over all sessions
+    seller_reward_sum = 0.00
     for i in range(8):
         buyer_copy = copy.deepcopy(buyer)
         seller_copy = copy.deepcopy(seller)
@@ -162,9 +191,38 @@ def run_single_grpo(GRPO, item, max_turns: int):
         outcomes[i] = outcome
         m = compute_metrics(outcome, B, C)
         metrics[i] = m
-    print(outcomes)
+        runs.append({'negotiation_log': negotiation_log, 'outcome': outcome, 'metric': m})
+        seller_reward_sum += m['NPs']
+        buyer_reward_sum += m['NPb']
+    buyer_reward_average = buyer_reward_sum / 8
+    seller_reward_average = seller_reward_sum / 8
     print(metrics)
-    buyer_log_encoded, seller_log_encoded, buyer_log_decoded, seller_log_decoded = extract_turns_from_all_messages(tokenizer_buyer=GRPO.model1_tokenizer, tokenizer_seller=GRPO.model2_tokenizer, negotiation_log=negotiation_log["allPackagesSentOrdered"])
+    #buyer_log_encoded, seller_log_encoded, buyer_log_decoded, seller_log_decoded = extract_turns_from_all_messages(tokenizer_buyer=GRPO.model1_tokenizer, tokenizer_seller=GRPO.model2_tokenizer, negotiation_log=negotiation_log["allPackagesSentOrdered"])
+    buyer_queries = []
+    buyer_responses = []
+    buyer_advantage = []
+    seller_queries = []
+    seller_responses = []
+    seller_advantage = []
+    for session in runs:
+        bq, br, ba = extract_input_output_tadvanatge_list(tokenizer=GRPO.model1_tokenizer, 
+                                                          negotiation_log=session['negotiation_log']['allPackagesSentOrdered'], 
+                                                          reward_metric=session['metric'], 
+                                                          reward_average=buyer_reward_average, 
+                                                          seller=False)
+        buyer_queries.extend(bq)
+        buyer_responses.extend(br)
+        buyer_advantage.extend(ba)
+        sq, sr, sa = extract_input_output_tadvanatge_list(tokenizer=GRPO.model1_tokenizer, 
+                                                          negotiation_log=session['negotiation_log']['allPackagesSentOrdered'], 
+                                                          reward_metric=session['metric'], 
+                                                          reward_average=seller_reward_average, 
+                                                          seller=True)
+        seller_queries.extend(sq)
+        seller_responses.extend(sr)
+        seller_advantage.extend(sa)
+        
+
 
     return outcomes, metrics
 

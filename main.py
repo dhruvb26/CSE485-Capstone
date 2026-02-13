@@ -44,6 +44,7 @@ def run_dialog(
     """Run negotiation dialog between buyer and seller agents."""
     import re
 
+    #Need to re-work use of this object at some point
     negotiation_log = {'buyerPackagesSentOrdered': [], 'sellerPackagesSentOrdered': [], 'allPackagesSentOrdered': []}
 
     if log_file is None:
