@@ -15,15 +15,13 @@ class LocalChat:
         self.model: str = model
         self.base_url: str = base_url
 
-    def chat(self, instructions: str, messages: list[dict], temperature = 0.00, top_p = 1.00) -> str:
+    def chat(self, instructions: str, messages: list[dict], temperature = 0.00, top_p = 1.00, all_negotiation_log = []) -> str:
         """Send a query using Chat Completions and return assistant content."""
 
-        print(f'-------------------\n{messages}\n--------------------------------')
+        #print(f'-------------------\n{messages}\n--------------------------------')
         try:
-            r = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers={"Content-Type": "application/json"},
-                json={
+            #temp code for debugging
+            json={
                     "model": self.model,
                     "messages": [
                         {"role": "system", "content": instructions},
@@ -35,7 +33,11 @@ class LocalChat:
                     "max_tokens": 1024,
                     "temperature": temperature,
                     "top_p": top_p
-                },
+                }
+            r = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers={"Content-Type": "application/json"},
+                json=json,
                 timeout=120,
             )
             if r.status_code != 200:
@@ -43,6 +45,8 @@ class LocalChat:
                 print("Response:", r.text)
                 r.raise_for_status()
             data = r.json()
+            #for input output extraction and debugging
+            all_negotiation_log.append((json, data))
             return (data["choices"][0]["message"]["content"] or "").strip()
         except Exception as e:
             logger.info("Error sending query to LocalChat. Returning empty string.")

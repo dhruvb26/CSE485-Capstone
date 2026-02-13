@@ -38,10 +38,13 @@ def run_dialog(
     max_turns: int = 12,
     log_file: Path | None = None,
     temperature = 0.00,
-    top_p = 1.00
+    top_p = 1.00,
+    all_negotiation_log = []
 ) -> Dict:
     """Run negotiation dialog between buyer and seller agents."""
     import re
+
+    negotiation_log = {'buyerPackagesSentOrdered': [], 'sellerPackagesSentOrdered': [], 'allPackagesSentOrdered': []}
 
     if log_file is None:
         runs_dir = Path("runs")
@@ -74,7 +77,7 @@ def run_dialog(
     for t in range(1, max_turns + 1):
         # Buyer turn
         log_print(f"\n--- Turn {t} (Buyer) ---")
-        b_out = buyer.chat(temperature=temperature, top_p=top_p)
+        b_out = buyer.chat(temperature=temperature, top_p=top_p, all_negotiation_log=negotiation_log["allPackagesSentOrdered"])
         b_act, b_price = extract_action_and_price(b_out)
         outcome["turns"] = t * 2 - 1
 
@@ -116,7 +119,7 @@ def run_dialog(
         # Seller turn
         log_print(f"\n--- Turn {t} (Seller) ---")
         seller.receive_message(b_out)
-        s_out = seller.chat(temperature=temperature, top_p=top_p)
+        s_out = seller.chat(temperature=temperature, top_p=top_p, all_negotiation_log=negotiation_log["allPackagesSentOrdered"] )
         s_act, s_price = extract_action_and_price(s_out)
         outcome["turns"] = t * 2
 
@@ -159,9 +162,13 @@ def run_dialog(
         buyer.receive_message(s_out)
 
     # Feasibility check
+    print(f'*******************************\nBefore Feasibility Check: \n {outcome} \n *******************************')
     if outcome["deal"]:
         D = outcome["price"]
-        if D is None or not (C <= D <= B):
+        #Remove Cost and Budget Check for more insightfull rewards, this allows deals to be made that or terrible for one party or another
+        #This may affect metirc callculations, take this into account later on
+        #if D is None or not (C <= D <= B):
+        if D is None:
             outcome["invalid"] = True
             outcome["deal"] = False
             outcome["price"] = None
@@ -180,7 +187,7 @@ def run_dialog(
         log_print(f"✗ No deal reached (turns: {outcome['turns']})")
     log_print("=" * 80 + "\n")
 
-    return outcome
+    return (outcome, negotiation_log)
 
 
 def run_session(testing_model: str, product_limit: int, dataset_dir: str, base_url: str) -> Dict:
