@@ -308,3 +308,64 @@ def finalize_aggregates(agg: Dict) -> Dict:
             "SNP_s": a["SNPs"],
         }
     return out
+
+
+
+#rework vllm server strart to better follow what is outlined in repo readme
+def start_vllm_wait(model_path, port=8000, cache_dir=None, user='bbreisc1', timeout=120):
+    env = os.environ.copy()
+    env["CUDA_VISIBLE_DEVICES"] = "0"
+    env["USER"] = user
+    env["VLLM_MODEL"] = model_path
+    env["VLLM_PORT"] = str(port)
+    env["VLLM_HOST"] = "0.0.0.0"
+    if cache_dir is None:
+        cache_dir = f"/scratch/scratch/bbreisc1/hf_cache_qwen"
+    env["VLLM_CACHE_DIR"] = cache_dir
+    os.makedirs(cache_dir, exist_ok=True)
+
+    cmd = [
+        "python", "-m", "vllm.entrypoints.openai.api_server",
+        "--model", env["VLLM_MODEL"],
+        "--port", env["VLLM_PORT"],
+        "--dtype", "float16",
+        "--tensor-parallel-size", "1",
+        "--gpu-memory-utilization", "0.70",
+        "--download-dir", env["VLLM_CACHE_DIR"]
+    ]
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+        text=True,  # decode bytes as text
+        bufsize=1   # line-buffered
+    )
+
+    print(f"Starting vLLM server with PID {proc.pid}...")
+
+    # Wait until startup message appears
+    import time
+    start_time = time.time()
+    for line in proc.stdout:
+        print(line, end="")  # optional: print server logs
+        if "Application startup complete" in line:
+            print("vLLM server is ready!")
+            return proc
+        if time.time() - start_time > timeout:
+            proc.terminate()
+            raise RuntimeError("vLLM did not start within timeout")
+
+    # fallback
+    raise RuntimeError("vLLM server exited unexpectedly")
+
+#stop vllm
+def stop_vllm(proc):
+    print(f"Stopping vLLM with PID {proc.pid}...")
+    proc.terminate()
+    try:
+        proc.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    print("vLLM stopped.")
