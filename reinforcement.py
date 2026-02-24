@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 
+
 '''
 This GRPO Layout is to follow a simple terminal reward self play RL Design, this is an initial design and code implementation
 '''
@@ -130,9 +131,34 @@ def extract_input_output_tadvanatge_list(tokenizer, negotiation_log, reward_metr
     return queries, responses, advantages
 
 
-def update_model(queries, responses, advantage):
+def grpo_update(ppo_trainer, queries, responses, advantages):
+    # Normalize advantages (VERY important)
+    adv = torch.tensor(advantages)
+    adv = (adv - adv.mean()) / (adv.std() + 1e-8)
 
+    for query, response, advantage in zip(queries, responses, adv):
+        query_tensor = torch.tensor(query, dtype=torch.long)
+        response_tensor = torch.tensor(response, dtype=torch.long)
+        reward_tensor = torch.tensor([advantage.item()])
 
+        # PPOTrainer.step handles:
+        # - old logprobs
+        # - ratio clipping
+        # - KL penalty
+        ppo_trainer.step(
+            [query_tensor],
+            [response_tensor],
+            reward_tensor)
+        
+def grpo_update_batch(ppo_trainer, queries, responses, advantages):
+    adv = torch.tensor(advantages)
+    adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+
+    query_tensors = [torch.tensor(q, dtype=torch.long) for q in queries]
+    response_tensors = [torch.tensor(r, dtype=torch.long) for r in responses]
+    reward_tensors = adv.tolist()
+
+    ppo_trainer.step(query_tensors, response_tensors, reward_tensors)
 
 
 def run_single_grpo(GRPO, item, max_turns: int):
@@ -213,7 +239,7 @@ def run_single_grpo(GRPO, item, max_turns: int):
         buyer_queries.extend(bq)
         buyer_responses.extend(br)
         buyer_advantage.extend(ba)
-        sq, sr, sa = extract_input_output_tadvanatge_list(tokenizer=GRPO.model1_tokenizer, 
+        sq, sr, sa = extract_input_output_tadvanatge_list(tokenizer=GRPO.model2_tokenizer, 
                                                           negotiation_log=session['negotiation_log']['allPackagesSentOrdered'], 
                                                           reward_metric=session['metric'], 
                                                           reward_average=seller_reward_average, 
@@ -222,26 +248,116 @@ def run_single_grpo(GRPO, item, max_turns: int):
         seller_responses.extend(sr)
         seller_advantage.extend(sa)
         
-
-
-    return outcomes, metrics
-
-def run_single_ppo(trainer, inputs, outputs, rewards):
-    for query, response, reward in zip(inputs, outputs, rewards):
-        trainer.step([query], [response], torch.tensor([reward]))
-
+    return {"outcomes": outcomes,
+        "metrics": metrics,
+        "buyer_queries": buyer_queries,
+        "buyer_responses": buyer_responses,
+        "buyer_advantage": buyer_advantage,
+        "seller_queries": seller_queries,
+        "seller_responses": seller_responses,
+        "seller_advantage": seller_advantage}
 
 if __name__ == "__main__":
     test_grpo = GRPO(model1="Qwen/Qwen2.5-7B-Instruct", 
                      model2="Qwen/Qwen2.5-7B-Instruct", 
                      base_url="http://127.0.0.1:8000")
     
-    test_item = load_product(dataset_dir, product_index=5)
+    #test_item = load_product(dataset_dir, product_index=5)
 
     #Commented out until PPO functiality is needed
-    #tokenizer = AutoTokenizer.from_pretrained(test_grpo.model1)
-    #model = AutoModelForCausalLM.from_pretrained(test_grpo.model1)
+    model_name = "Qwen/Qwen2.5-7B-Instruct"
 
-    #test_ppo_trainer = PPOTrainer(test_grpo.config, model, tokenizer)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name)
 
-    run_single_grpo(GRPO=test_grpo, item=test_item, max_turns=10)
+    config = PPOConfig(
+        learning_rate=1e-6,
+        batch_size=4,
+        mini_batch_size=1,
+        kl_coef=0.02,        # important for stability
+    )
+
+    ppo_trainer = PPOTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        config=config,
+    )
+
+    #updated/session configurations !!! Need to update save_path at least
+    #URGENT!
+    update_every = 64
+    save_every = 5
+    product_limit = 50
+    save_path = f"/scratch/bbreisc1/bbreisc1/grpo_qwen_checkpoint"
+    #not a parameter
+    update_count = 0
+
+    #History Buffers
+    buyer_buffer_q = []
+    buyer_buffer_r = []
+    buyer_buffer_a = []
+
+    seller_buffer_q = []
+    seller_buffer_r = []
+    seller_buffer_a = []
+
+    for i in range(product_limit):
+        item = load_product(dataset_dir, product_index=i)
+        #log item loaded
+
+        result = run_single_grpo(
+            GRPO=test_grpo,
+            item=item,
+            max_turns=10
+        )
+        #log session ran
+
+        buyer_buffer_q.extend(result["buyer_queries"])
+        buyer_buffer_r.extend(result["buyer_responses"])
+        buyer_buffer_a.extend(result["buyer_advantage"])
+
+        seller_buffer_q.extend(result["seller_queries"])
+        seller_buffer_r.extend(result["seller_responses"])
+        seller_buffer_a.extend(result["seller_advantage"])
+        #log results extracted
+        #maybe log results
+
+        if len(buyer_buffer_q) + len(seller_buffer_q) >= update_every:
+            #log updated starting
+
+            grpo_update_batch(
+                ppo_trainer,
+                buyer_buffer_q,
+                buyer_buffer_r,
+                buyer_buffer_a
+            )
+            #log buyer updated completed
+
+            buyer_buffer_q.clear()
+            buyer_buffer_r.clear()
+            buyer_buffer_a.clear()
+            #log buyer buffers cleared
+
+            grpo_update_batch(
+                ppo_trainer,
+                seller_buffer_q,
+                seller_buffer_r,
+                seller_buffer_a
+            )
+            #log seller updated completed
+
+            seller_buffer_q.clear()
+            seller_buffer_r.clear()
+            seller_buffer_a.clear()
+            #log seller buffers cleared
+
+            update_count += 1
+            #log update count
+
+
+            if update_count % save_every == 0:
+                model.save_pretrained(save_path)
+                tokenizer.save_pretrained(save_path)
+                #log checkpoint saved
+
+                #restart vllm server with new model weights
