@@ -28,3 +28,6 @@ finetune/tokenizers/
 
 # Data
 formatted_data/
+
+# Literature
+literature/
