@@ -77,10 +77,17 @@ class BaseTaskHandler(ABC):
         model,
         n: int | None = None,
         agent: str = "mturk_agent_1",
-        run_log_path: Path | None = None,
+        run_dir: Path | None = None,
     ) -> dict:
         instances = dataset_handler.get_instances(n)
         results = []
+
+        run_log_path: Path | None = None
+        if run_dir is not None:
+            dataset = "ca" if self.task_id.endswith("_ca") else "dnd"
+            task_log_dir = run_dir / dataset / self.task_id
+            task_log_dir.mkdir(parents=True, exist_ok=True)
+            run_log_path = task_log_dir / "model_io.jsonl"
 
         for idx, instance in enumerate(tqdm(instances, desc=self.task_id, unit="instance")):
             prompt = self.build_prompt(instance, agent)

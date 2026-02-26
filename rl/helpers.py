@@ -7,8 +7,9 @@ import requests
 from tqdm.auto import tqdm
 
 
-def create_run_dir(config: dict, runs_dir: Path | None = None) -> tuple[Path, Path]:
-    """Create a timestamped run directory, write config.json, return (run_dir, model_io_path)."""
+def create_run_dir(config: dict, runs_dir: Path | None = None) -> Path:
+    """Create a timestamped run directory, write config.json, return run_dir.
+    Logs are written under run_dir / dataset / task_id / model_io.jsonl by the evaluator."""
     if runs_dir is None:
         runs_dir = Path.cwd() / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -19,7 +20,7 @@ def create_run_dir(config: dict, runs_dir: Path | None = None) -> tuple[Path, Pa
     (run_dir / "config.json").write_text(
         json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    return run_dir, run_dir / "model_io.jsonl"
+    return run_dir
 
 
 def load_json(file_path: str) -> dict:

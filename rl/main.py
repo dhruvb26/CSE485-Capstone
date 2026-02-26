@@ -26,8 +26,8 @@ def run(config: dict) -> dict:
     ]
 
     model = get_model(config)
-    run_dir, run_log_path = create_run_dir(config)
-    logger.info("run log dir created at: %s", run_dir)
+    run_dir = create_run_dir(config)
+    logger.info("run log dir: %s", run_dir)
 
     ca_handler = CasinoDatasetHandler(base_dir / config["data"]["casino"]["test"])
     dnd_handler = DNDDatasetHandler(base_dir / config["data"]["dnd"]["test"])
@@ -44,7 +44,7 @@ def run(config: dict) -> dict:
         agent = "mturk_agent_1" if task_id.endswith("_ca") else "YOU"
 
         results = task.evaluate(
-            dataset, model, n=n_instances, agent=agent, run_log_path=run_log_path
+            dataset, model, n=n_instances, agent=agent, run_dir=run_dir
         )
         all_results[task_id] = results
         logger.info("%s: %.2f%%", task_id, results["accuracy"] * 100)
