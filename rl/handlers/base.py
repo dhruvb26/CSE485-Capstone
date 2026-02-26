@@ -36,8 +36,13 @@ class BaseTaskHandler(ABC):
     def score(self, prediction: Any, truth: Any) -> float: ...
 
     def extract_answer_tag(self, text: str) -> str | None:
-        """Extract content between <answer> … </answer> tags."""
+        """Extract content between <answer> … </answer> tags (first occurrence)."""
         m = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL | re.IGNORECASE)
+        return m.group(1).strip() if m else None
+
+    def extract_thought_tag(self, text: str) -> str | None:
+        """Extract content between <thought> … </thought> tags (first occurrence)."""
+        m = re.search(r"<thought>(.*?)</thought>", text, re.DOTALL | re.IGNORECASE)
         return m.group(1).strip() if m else None
 
     def extract_number(self, text: str) -> str | None:
@@ -45,29 +50,63 @@ class BaseTaskHandler(ABC):
         m = re.search(r"-?\d+", text)
         return m.group(0) if m else None
 
-    def extract_json(self, text: str) -> dict | None:
-        """Try to parse a JSON object from text; checks <answer> tags first."""
-        # 1. inside <answer> tags
-        tagged = self.extract_answer_tag(text)
-        if tagged:
+    @staticmethod
+    def _resolve_arith(text: str) -> str:
+        """Evaluate a simple integer arithmetic expression (e.g. '3 + 3 + 3' → '9').
+
+        Only allows digits, spaces, and the four basic operators to prevent eval abuse.
+        Falls back to the original text if it cannot be evaluated.
+        """
+        stripped = text.strip()
+        if re.fullmatch(r"[\d\s\+\-\*\/\(\)]+", stripped):
             try:
-                return json.loads(tagged)
+                result = eval(stripped, {"__builtins__": {}})  # noqa: S307
+                if isinstance(result, (int, float)):
+                    return str(int(result))
             except Exception:
                 pass
+        return stripped
+
+    def extract_json(self, text: str) -> dict | None:
+        """Try to parse a JSON object from text; checks <answer> tags first.
+
+        Numeric JSON values that are simple arithmetic expressions (e.g. "3 + 3 + 3")
+        are evaluated before parsing so that model outputs like
+        ``{"total_item_count": 3 + 3 + 3}`` are handled correctly.
+        """
+        def _try_parse(blob: str) -> dict | None:
+            blob = blob.strip()
+            try:
+                return json.loads(blob)
+            except Exception:
+                pass
+            # Replace arithmetic expressions in JSON values before retrying.
+            fixed = re.sub(
+                r':\s*([\d\s\+\-\*\/\(\)]+?)(?=[,\}])',
+                lambda m: ': ' + self._resolve_arith(m.group(1)),
+                blob,
+            )
+            try:
+                return json.loads(fixed)
+            except Exception:
+                return None
+
+        # 1. inside <answer> tags (preferred)
+        tagged = self.extract_answer_tag(text)
+        if tagged:
+            result = _try_parse(tagged)
+            if result is not None:
+                return result
 
         # 2. whole text
-        try:
-            return json.loads(text.strip())
-        except Exception:
-            pass
+        result = _try_parse(text)
+        if result is not None:
+            return result
 
         # 3. first {...} block
         m = re.search(r"\{.*\}", text, re.DOTALL)
         if m:
-            try:
-                return json.loads(m.group(0))
-            except Exception:
-                pass
+            return _try_parse(m.group(0))
 
         return None
 
@@ -93,12 +132,16 @@ class BaseTaskHandler(ABC):
             prompt = self.build_prompt(instance, agent)
             truth = self.ground_truth(instance, agent)
             raw = model.generate(prompt)
+            thought = self.extract_thought_tag(raw)
+            answer = self.extract_answer_tag(raw)
             prediction = self.parse_output(raw)
             s = self.score(prediction, truth) if prediction is not None else 0.0
             results.append(
                 {
                     "prompt": prompt,
                     "raw_output": raw,
+                    "thought": thought,
+                    "answer": answer,
                     "prediction": prediction,
                     "ground_truth": truth,
                     "score": s,
@@ -110,6 +153,8 @@ class BaseTaskHandler(ABC):
                     "instance_idx": idx,
                     "prompt": prompt,
                     "raw_output": raw,
+                    "thought": thought,
+                    "answer": answer,
                     "prediction": prediction,
                     "ground_truth": truth,
                     "score": s,
