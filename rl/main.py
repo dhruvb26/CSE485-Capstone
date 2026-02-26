@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from rl.handlers import TASK_REGISTRY, CasinoDatasetHandler, DNDDatasetHandler
+from rl.helpers import create_run_dir
 from rl.models import get_model
 
 CONFIG_PATH = Path("rl/config.json")
@@ -25,6 +26,8 @@ def run(config: dict) -> dict:
     ]
 
     model = get_model(config)
+    run_dir, run_log_path = create_run_dir(config)
+    logger.info("run log dir created at: %s", run_dir)
 
     ca_handler = CasinoDatasetHandler(base_dir / config["data"]["casino"]["test"])
     dnd_handler = DNDDatasetHandler(base_dir / config["data"]["dnd"]["test"])
@@ -40,7 +43,9 @@ def run(config: dict) -> dict:
         dataset = ca_handler if task_id.endswith("_ca") else dnd_handler
         agent = "mturk_agent_1" if task_id.endswith("_ca") else "YOU"
 
-        results = task.evaluate(dataset, model, n=n_instances, agent=agent)
+        results = task.evaluate(
+            dataset, model, n=n_instances, agent=agent, run_log_path=run_log_path
+        )
         all_results[task_id] = results
         logger.info("%s: %.2f%%", task_id, results["accuracy"] * 100)
 

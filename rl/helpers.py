@@ -1,9 +1,25 @@
 import fnmatch
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 from tqdm.auto import tqdm
+
+
+def create_run_dir(config: dict, runs_dir: Path | None = None) -> tuple[Path, Path]:
+    """Create a timestamped run directory, write config.json, return (run_dir, model_io_path)."""
+    if runs_dir is None:
+        runs_dir = Path.cwd() / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc)
+    run_id = ts.strftime("%Y-%m-%dT%H-%M-%S.") + ts.strftime("%f")[:3] + "Z"
+    run_dir = runs_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "config.json").write_text(
+        json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return run_dir, run_dir / "model_io.jsonl"
 
 
 def load_json(file_path: str) -> dict:
