@@ -1,3 +1,5 @@
+from unsloth import FastLanguageModel
+
 import torch
 from transformers import StoppingCriteriaList, StopStringCriteria
 
@@ -22,8 +24,6 @@ class LocalModel(BaseModel):
         missing = [k for k in _REQUIRED if k not in config]
         if missing:
             raise KeyError(f"Missing required keys in config.model.local: {missing}")
-
-        from unsloth import FastLanguageModel
 
         self.model, self.tokenizer = FastLanguageModel.from_pretrained(
             config["model_name"],
