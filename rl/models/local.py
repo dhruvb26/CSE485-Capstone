@@ -29,7 +29,7 @@ class LocalModel(BaseModel):
             config["model_name"],
             config["max_seq_length"],
             load_in_4bit=config["load_in_4bit"],
-            fast_inference=False,
+            fast_inference=True,
             max_lora_rank=config["lora_rank"],
             gpu_memory_utilization=config["gpu_memory_utilization"],
         )

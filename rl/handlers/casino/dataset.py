@@ -31,8 +31,9 @@ _PROMPT_HEADER = (
 )
 
 OUTPUT_FORMAT_INSTRUCTION = (
-    "Response format: Put your internal thinking and reasoning in <thought>...</thought>. "
-    "Your final answer must always appear within <answer>...</answer> tags."
+    "Response format: First, complete ALL your reasoning inside <thought>...</thought>. "
+    "Only after your reasoning is done, output your final answer inside <answer>...</answer>. "
+    "Do NOT output <answer> before your reasoning is complete."
 )
 
 

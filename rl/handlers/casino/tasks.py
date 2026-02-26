@@ -27,8 +27,11 @@ class TotalItemCountCA(BaseTaskHandler):
         return build_prompt(
             instance,
             agent,
-            "What is the total number of items being negotiated over?",
-            'Inside <answer> put a JSON object with one key: "total_item_count" (number).',
+            "What is the total number of items being negotiated over? "
+            "(Count all packages of all types combined.)",
+            'Inside <answer> put a JSON object with one key: "total_item_count" whose value '
+            "is a plain integer (e.g. {\"total_item_count\": 9}). "
+            "Do not write math expressions — evaluate the sum and write the final number.",
         )
 
     def ground_truth(self, instance: dict, agent: str) -> dict[str, int]:
@@ -60,8 +63,11 @@ class MaxPointsCA(BaseTaskHandler):
         return build_prompt(
             instance,
             agent,
-            "What is the maximum number of points that you can possibly get in any deal?",
-            'Inside <answer> put a JSON object with one key: "max_points" (number).',
+            "What is the maximum number of points you could get if you received ALL available "
+            "packages (all 3 food, all 3 water, and all 3 firewood)?",
+            'Inside <answer> put a JSON object with one key: "max_points" whose value is a '
+            "plain integer (e.g. {\"max_points\": 36}). "
+            "Do not write math expressions — evaluate the total and write the final number.",
         )
 
     def ground_truth(self, instance: dict, agent: str) -> dict[str, int]:
@@ -128,9 +134,10 @@ class HighPriorityCA(BaseTaskHandler):
         return build_prompt(
             instance,
             agent,
-            "What is your highest priority issue?",
-            'Inside <answer> put a JSON object with one key: "item" and value one of '
-            '"food", "water", "firewood".',
+            "Which single item (food, water, or firewood) is worth the MOST points per "
+            "package to you? That is your highest priority issue.",
+            'Inside <answer> put a JSON object with one key: "item" and value exactly one of '
+            '"food", "water", or "firewood" — whichever has the highest points per package.',
         )
 
     def ground_truth(self, instance: dict, agent: str) -> dict[str, str]:
@@ -163,9 +170,10 @@ class LowPriorityCA(BaseTaskHandler):
         return build_prompt(
             instance,
             agent,
-            "What is your lowest priority issue?",
-            'Inside <answer> put a JSON object with one key: "item" and value one of '
-            '"food", "water", "firewood".',
+            "Which single item (food, water, or firewood) is worth the FEWEST points per "
+            "package to you? That is your lowest priority issue.",
+            'Inside <answer> put a JSON object with one key: "item" and value exactly one of '
+            '"food", "water", or "firewood" — whichever has the fewest points per package.',
         )
 
     def ground_truth(self, instance: dict, agent: str) -> dict[str, str]:
