@@ -1,11 +1,14 @@
 {
+    "logging": {
+        "level": "INFO"
+    },
     "seed": {
         "torch": 42,
         "np": 42,
         "random": 42
     },
     "model": {
-        "type": "openai",
+        "type": "local",
         "openai": {
             "model": "gpt-4o-mini",
             "api_key_env": "OPENAI_API_KEY",

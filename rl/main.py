@@ -6,12 +6,15 @@ Usage (from project root):
 """
 
 import json
+import logging
 from pathlib import Path
 
 from rl.handlers import TASK_REGISTRY, CasinoDatasetHandler, DNDDatasetHandler
 from rl.models import get_model
 
 CONFIG_PATH = Path("rl/config.json")
+
+logger = logging.getLogger(__name__)
 
 
 def run(config: dict) -> dict:
@@ -30,7 +33,7 @@ def run(config: dict) -> dict:
 
     for task_id in task_ids:
         if task_id not in TASK_REGISTRY:
-            print(f"unknown task: {task_id}")
+            logger.warning("unknown task: %s", task_id)
             continue
 
         task = TASK_REGISTRY[task_id]()
@@ -39,11 +42,15 @@ def run(config: dict) -> dict:
 
         results = task.evaluate(dataset, model, n=n_instances, agent=agent)
         all_results[task_id] = results
-        print(f"{task_id}: {results['accuracy']:.2%}")
+        logger.info("%s: %.2f%%", task_id, results["accuracy"] * 100)
 
     return all_results
 
 
 if __name__ == "__main__":
     config = json.loads(CONFIG_PATH.read_text())
+    logging.basicConfig(
+        level=config["logging"]["level"],
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     all_results = run(config)
