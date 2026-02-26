@@ -30,6 +30,11 @@ _PROMPT_HEADER = (
     "\n\nQuestion: {question}"
 )
 
+OUTPUT_FORMAT_INSTRUCTION = (
+    "Response format: Put your internal thinking and reasoning in <thought>...</thought>. "
+    "Your final answer must always appear within <answer>...</answer> tags."
+)
+
 
 class CasinoDatasetHandler(BaseDatasetHandler):
     """Loads ca.test.csv (or ca.train.csv), filtering out Walk-Away conversations."""
@@ -61,4 +66,4 @@ def build_prompt(instance: dict, agent: str, question: str, output_spec: str) ->
         firewood=pts.get("firewood", "?"),
         question=question,
     )
-    return body + " " + output_spec
+    return f"{body}\n\n{OUTPUT_FORMAT_INSTRUCTION}\n\n{output_spec}"
