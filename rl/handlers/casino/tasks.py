@@ -49,6 +49,12 @@ class TotalItemCountCA(BaseTaskHandler):
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
 
+    def log_prediction(self, prediction) -> str | None:
+        return str(prediction[self._key]) if prediction else None
+
+    def log_ground_truth(self, truth) -> str:
+        return str(truth[self._key])
+
 
 class MaxPointsCA(BaseTaskHandler):
     """
@@ -85,6 +91,12 @@ class MaxPointsCA(BaseTaskHandler):
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
 
+    def log_prediction(self, prediction) -> str | None:
+        return str(prediction[self._key]) if prediction else None
+
+    def log_ground_truth(self, truth) -> str:
+        return str(truth[self._key])
+
 
 class PointValuesCA(BaseTaskHandler):
     """
@@ -118,6 +130,12 @@ class PointValuesCA(BaseTaskHandler):
         if not isinstance(prediction, dict):
             return 0.0
         return 1.0 if all(prediction.get(k) == truth.get(k) for k in self._keys) else 0.0
+
+    def log_prediction(self, prediction) -> dict | None:
+        return prediction  # already {food: str, water: str, firewood: str}
+
+    def log_ground_truth(self, truth) -> dict:
+        return truth  # already {food: str, water: str, firewood: str}
 
 
 class HighPriorityCA(BaseTaskHandler):
@@ -155,6 +173,12 @@ class HighPriorityCA(BaseTaskHandler):
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
 
+    def log_prediction(self, prediction) -> str | None:
+        return prediction.get(self._key) if prediction else None
+
+    def log_ground_truth(self, truth) -> str:
+        return truth.get(self._key, "")
+
 
 class LowPriorityCA(BaseTaskHandler):
     """
@@ -190,6 +214,12 @@ class LowPriorityCA(BaseTaskHandler):
 
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
+
+    def log_prediction(self, prediction) -> str | None:
+        return prediction.get(self._key) if prediction else None
+
+    def log_ground_truth(self, truth) -> str:
+        return truth.get(self._key, "")
 
 
 CA_TASK_REGISTRY: dict[str, type[BaseTaskHandler]] = {

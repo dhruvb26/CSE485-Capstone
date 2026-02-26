@@ -25,8 +25,9 @@ class LocalModel(BaseModel):
         if missing:
             raise KeyError(f"Missing required keys in config.model.local: {missing}")
 
+        self._model_name: str = config["model_name"]
         self.model, self.tokenizer = FastLanguageModel.from_pretrained(
-            config["model_name"],
+            self._model_name,
             config["max_seq_length"],
             load_in_4bit=config["load_in_4bit"],
             fast_inference=True,
@@ -44,6 +45,10 @@ class LocalModel(BaseModel):
                 )
             ]
         )
+
+    @property
+    def model_id(self) -> str:
+        return self._model_name.replace("/", "_")
 
     def generate(self, prompt: str) -> str:
         inputs = self.tokenizer(prompt, return_tensors="pt").to("cuda")

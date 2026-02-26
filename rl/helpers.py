@@ -9,7 +9,10 @@ from tqdm.auto import tqdm
 
 def create_run_dir(config: dict, runs_dir: Path | None = None) -> Path:
     """Create a timestamped run directory, write config.json, return run_dir.
-    Logs are written under run_dir / dataset / task_id / model_io.jsonl by the evaluator."""
+
+    Log files are written under run_dir / {dataset} / {task_id} /
+    {dataset}_{model_id}_{task_id}_{n}.json in SysEval-compatible format.
+    """
     if runs_dir is None:
         runs_dir = Path.cwd() / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)

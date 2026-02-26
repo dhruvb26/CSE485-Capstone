@@ -76,6 +76,36 @@ class BaseTaskHandler(ABC):
 
         return None
 
+    def log_prediction(self, prediction) -> str | dict | None:
+        """Convert a parsed prediction to a SysEval-compatible log value.
+
+        Override per task when the prediction is a dict with a single key.
+        Default: str(prediction).
+        """
+        return str(prediction) if prediction is not None else None
+
+    def log_ground_truth(self, truth) -> str | dict:
+        """Convert a ground truth to a SysEval-compatible log value.
+
+        Override per task when the truth is a dict with a single key.
+        Default: str(truth).
+        """
+        return str(truth)
+
+    @staticmethod
+    def _remove_duplicates(
+        prompts: list[str], ground_truth: list
+    ) -> tuple[list[str], list]:
+        """Return (unique_prompts, unique_gts) keeping the first occurrence of each prompt."""
+        seen: set[str] = set()
+        uniq_p, uniq_gt = [], []
+        for p, gt in zip(prompts, ground_truth):
+            if p not in seen:
+                seen.add(p)
+                uniq_p.append(p)
+                uniq_gt.append(gt)
+        return uniq_p, uniq_gt
+
     def evaluate(
         self,
         dataset_handler: BaseDatasetHandler,
@@ -85,53 +115,61 @@ class BaseTaskHandler(ABC):
         run_dir: Path | None = None,
     ) -> dict:
         instances = dataset_handler.get_instances(n)
-        results = []
 
-        run_log_path: Path | None = None
+        all_prompts: list[str] = []
+        all_gts: list = []
+        for instance in instances:
+            all_prompts.append(self.build_prompt(instance, agent))
+            all_gts.append(self.ground_truth(instance, agent))
+
+        uniq_prompts, uniq_gts = self._remove_duplicates(all_prompts, all_gts)
+
+        outputs_dict: dict[str, str] = {}
+        for prompt in tqdm(uniq_prompts, desc=self.task_id, unit="prompt"):
+            outputs_dict[prompt] = model.generate(prompt)
+
+        final_prompts: list[str] = []
+        final_preds_log: list = []
+        final_gts_log: list = []
+        scores: list[float] = []
+
+        for prompt, gt in zip(uniq_prompts, uniq_gts):
+            raw = outputs_dict[prompt]
+            prediction = self.parse_output(raw)
+            if prediction is not None:
+                scores.append(self.score(prediction, gt))
+                final_prompts.append(prompt)
+                final_preds_log.append(self.log_prediction(prediction))
+                final_gts_log.append(self.log_ground_truth(gt))
+
+        accuracy = sum(scores) / len(scores) if scores else 0.0
+
+        stats = {
+            "total": len(all_prompts),
+            "unique": len(uniq_prompts),
+            "valid": len(final_prompts),
+            "accuracy": round(accuracy, 4),
+        }
+
+        log_data = {
+            "stats": stats,
+            "ground truth": final_gts_log,
+            "predictions": final_preds_log,
+            "prompts": final_prompts,
+            "outputs_dict": outputs_dict,
+        }
+
         if run_dir is not None:
             dataset = "ca" if self.task_id.endswith("_ca") else "dnd"
             task_log_dir = run_dir / dataset / self.task_id
             task_log_dir.mkdir(parents=True, exist_ok=True)
-            run_log_path = task_log_dir / "model_io.jsonl"
+            model_id = getattr(model, "model_id", "model")
+            fname = f"{dataset}_{model_id}_{self.task_id}_{len(all_prompts)}.json"
+            with (task_log_dir / fname).open("w", encoding="utf-8") as f:
+                json.dump(log_data, f, indent=2, ensure_ascii=False)
 
-        for idx, instance in enumerate(tqdm(instances, desc=self.task_id, unit="instance")):
-            prompt = self.build_prompt(instance, agent)
-            truth = self.ground_truth(instance, agent)
-            raw = model.generate(prompt)
-            thought = self.extract_thought_tag(raw)
-            answer = self.extract_answer_tag(raw)
-            prediction = self.parse_output(raw)
-            s = self.score(prediction, truth) if prediction is not None else 0.0
-            results.append(
-                {
-                    "prompt": prompt,
-                    "raw_output": raw,
-                    "thought": thought,
-                    "answer": answer,
-                    "prediction": prediction,
-                    "ground_truth": truth,
-                    "score": s,
-                }
-            )
-            if run_log_path is not None:
-                log_line = {
-                    "task_id": self.task_id,
-                    "instance_idx": idx,
-                    "prompt": prompt,
-                    "raw_output": raw,
-                    "thought": thought,
-                    "answer": answer,
-                    "prediction": prediction,
-                    "ground_truth": truth,
-                    "score": s,
-                }
-                with run_log_path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_line, ensure_ascii=False) + "\n")
-
-        accuracy = sum(r["score"] for r in results) / len(results) if results else 0.0
         return {
             "task": self.task_id,
-            "n": len(results),
+            "n": len(all_prompts),
             "accuracy": accuracy,
-            "results": results,
         }

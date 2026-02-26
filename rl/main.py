@@ -3,12 +3,20 @@ Stage-0 evaluation harness.
 
 Usage (from project root):
     python -m rl.main
+
+Log files are written in SysEval-compatible format:
+    runs/{timestamp}/{dataset}/{task_id}/{dataset}_{model_id}_{task_id}_{n}.json
+
+To evaluate a completed run offline:
+    from rl.evaluate import print_run_summary
+    print_run_summary("runs/<timestamp>")
 """
 
 import json
 import logging
 from pathlib import Path
 
+from rl.evaluate import print_run_summary
 from rl.handlers import TASK_REGISTRY, CasinoDatasetHandler, DNDDatasetHandler
 from rl.helpers import create_run_dir
 from rl.models import get_model
@@ -27,7 +35,7 @@ def run(config: dict) -> dict:
 
     model = get_model(config)
     run_dir = create_run_dir(config)
-    logger.info("run log dir: %s", run_dir)
+    logger.info("run dir: %s  model: %s", run_dir, model.model_id)
 
     ca_handler = CasinoDatasetHandler(base_dir / config["data"]["casino"]["test"])
     dnd_handler = DNDDatasetHandler(base_dir / config["data"]["dnd"]["test"])
@@ -43,11 +51,13 @@ def run(config: dict) -> dict:
         dataset = ca_handler if task_id.endswith("_ca") else dnd_handler
         agent = "mturk_agent_1" if task_id.endswith("_ca") else "YOU"
 
-        results = task.evaluate(
+        result = task.evaluate(
             dataset, model, n=n_instances, agent=agent, run_dir=run_dir
         )
-        all_results[task_id] = results
-        logger.info("%s: %.2f%%", task_id, results["accuracy"] * 100)
+        all_results[task_id] = result
+        logger.info("%s: %.2f%%", task_id, result["accuracy"] * 100)
+
+    print_run_summary(run_dir)
 
     return all_results
 
