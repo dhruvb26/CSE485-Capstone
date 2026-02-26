@@ -6,9 +6,9 @@ Each class implements the BaseTaskHandler interface:
     ground_truth  → computes the correct answer programmatically (no model needed)
     parse_output  → extracts a structured answer from raw model text
     score         → binary exact-match (0.0 or 1.0)
-"""
 
-import re
+All tasks expect a JSON object inside <answer>; verification is on structured output only.
+"""
 
 from rl.handlers.base import BaseTaskHandler
 from rl.handlers.casino.dataset import agent_points, build_prompt
@@ -17,53 +17,67 @@ from rl.handlers.casino.dataset import agent_points, build_prompt
 class TotalItemCountCA(BaseTaskHandler):
     """
     sta_total_item_count_ca
-    Ground truth is always "9" — 3 food + 3 water + 3 firewood.
+    Ground truth is always {"total_item_count": 9} — 3 food + 3 water + 3 firewood.
     """
 
     task_id = "sta_total_item_count_ca"
+    _key = "total_item_count"
 
     def build_prompt(self, instance: dict, agent: str) -> str:
         return build_prompt(
             instance,
             agent,
             "What is the total number of items being negotiated over?",
-            "Present your answer as a single number with no additional text.",
+            'Inside <answer> put a JSON object with one key: "total_item_count" (number).',
         )
 
-    def ground_truth(self, instance: dict, agent: str) -> str:
-        return "9"
+    def ground_truth(self, instance: dict, agent: str) -> dict[str, int]:
+        return {self._key: 9}
 
-    def parse_output(self, text: str) -> str | None:
-        return self.extract_number(text)
+    def parse_output(self, text: str) -> dict[str, int] | None:
+        data = self.extract_json(text)
+        if not data or self._key not in data:
+            return None
+        try:
+            return {self._key: int(data[self._key])}
+        except (TypeError, ValueError):
+            return None
 
-    def score(self, prediction: str, truth: str) -> float:
-        return 1.0 if prediction == truth else 0.0
+    def score(self, prediction: dict | None, truth: dict) -> float:
+        return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
 
 
 class MaxPointsCA(BaseTaskHandler):
     """
     sta_max_points_ca
-    Ground truth is always "36" — 3×5 + 3×4 + 3×3 (take everything).
+    Ground truth is always {"max_points": 36} — 3×5 + 3×4 + 3×3 (take everything).
     """
 
     task_id = "sta_max_points_ca"
+    _key = "max_points"
 
     def build_prompt(self, instance: dict, agent: str) -> str:
         return build_prompt(
             instance,
             agent,
             "What is the maximum number of points that you can possibly get in any deal?",
-            "Present your answer as a single number with no additional text.",
+            'Inside <answer> put a JSON object with one key: "max_points" (number).',
         )
 
-    def ground_truth(self, instance: dict, agent: str) -> str:
-        return "36"
+    def ground_truth(self, instance: dict, agent: str) -> dict[str, int]:
+        return {self._key: 36}
 
-    def parse_output(self, text: str) -> str | None:
-        return self.extract_number(text)
+    def parse_output(self, text: str) -> dict[str, int] | None:
+        data = self.extract_json(text)
+        if not data or self._key not in data:
+            return None
+        try:
+            return {self._key: int(data[self._key])}
+        except (TypeError, ValueError):
+            return None
 
-    def score(self, prediction: str, truth: str) -> float:
-        return 1.0 if prediction == truth else 0.0
+    def score(self, prediction: dict | None, truth: dict) -> float:
+        return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
 
 
 class PointValuesCA(BaseTaskHandler):
@@ -81,8 +95,8 @@ class PointValuesCA(BaseTaskHandler):
             instance,
             agent,
             "How many points is one package of each issue worth to you?",
-            "Present your answer as a json within <answer> </answer> tags with keys as "
-            "issues (food, water, and firewood) and values as the corresponding answers.",
+            'Inside <answer> put a JSON object with keys "food", "water", "firewood" and '
+            "values as the point counts (numbers) for each.",
         )
 
     def ground_truth(self, instance: dict, agent: str) -> dict[str, str]:
@@ -103,73 +117,71 @@ class PointValuesCA(BaseTaskHandler):
 class HighPriorityCA(BaseTaskHandler):
     """
     sta_ask_high_priority_ca
-    Ground truth: lowercase name of the agent's highest-value item.
+    Ground truth: {"item": "food"|"water"|"firewood"} for the agent's highest-value item.
     """
 
     task_id = "sta_ask_high_priority_ca"
+    _key = "item"
     _options = ("food", "water", "firewood")
-    _mc = {"a": "food", "b": "water", "c": "firewood"}
 
     def build_prompt(self, instance: dict, agent: str) -> str:
         return build_prompt(
             instance,
             agent,
             "What is your highest priority issue?",
-            "Present your answer as one of the following multiple choice options. "
-            "You must select an option.\nA: food\nB: water\nC: firewood",
+            'Inside <answer> put a JSON object with one key: "item" and value one of '
+            '"food", "water", "firewood".',
         )
 
-    def ground_truth(self, instance: dict, agent: str) -> str:
-        return instance["participant_info"][agent]["value2issue"]["High"].lower()
+    def ground_truth(self, instance: dict, agent: str) -> dict[str, str]:
+        item = instance["participant_info"][agent]["value2issue"]["High"].lower()
+        return {self._key: item}
 
-    def parse_output(self, text: str) -> str | None:
-        t = text.lower().strip()
-        for letter, item in self._mc.items():
-            if re.search(rf"\b{letter}\b", t):
-                return item
-        for item in self._options:
-            if item in t:
-                return item
-        return None
+    def parse_output(self, text: str) -> dict[str, str] | None:
+        data = self.extract_json(text)
+        if not data or self._key not in data:
+            return None
+        raw = data[self._key]
+        item = str(raw).lower().strip() if raw is not None else None
+        return {self._key: item} if item in self._options else None
 
-    def score(self, prediction: str, truth: str) -> float:
-        return 1.0 if prediction == truth else 0.0
+    def score(self, prediction: dict | None, truth: dict) -> float:
+        return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
 
 
 class LowPriorityCA(BaseTaskHandler):
     """
     sta_ask_low_priority_ca
-    Ground truth: lowercase name of the agent's lowest-value item.
+    Ground truth: {"item": "food"|"water"|"firewood"} for the agent's lowest-value item.
     """
 
     task_id = "sta_ask_low_priority_ca"
+    _key = "item"
     _options = ("food", "water", "firewood")
-    _mc = {"a": "food", "b": "water", "c": "firewood"}
 
     def build_prompt(self, instance: dict, agent: str) -> str:
         return build_prompt(
             instance,
             agent,
             "What is your lowest priority issue?",
-            "Present your answer as one of the following multiple choice options. "
-            "You must select an option.\nA: food\nB: water\nC: firewood",
+            'Inside <answer> put a JSON object with one key: "item" and value one of '
+            '"food", "water", "firewood".',
         )
 
-    def ground_truth(self, instance: dict, agent: str) -> str:
-        return instance["participant_info"][agent]["value2issue"]["Low"].lower()
+    def ground_truth(self, instance: dict, agent: str) -> dict[str, str]:
+        item = instance["participant_info"][agent]["value2issue"]["Low"].lower()
+        return {self._key: item}
 
-    def parse_output(self, text: str) -> str | None:
-        t = text.lower().strip()
-        for letter, item in self._mc.items():
-            if re.search(rf"\b{letter}\b", t):
-                return item
-        for item in self._options:
-            if item in t:
-                return item
-        return None
+    def parse_output(self, text: str) -> dict[str, str] | None:
+        data = self.extract_json(text)
+        if not data or self._key not in data:
+            return None
+        raw = data[self._key]
+        item = str(raw).lower().strip() if raw is not None else None
+        return {self._key: item} if item in self._options else None
 
-    def score(self, prediction: str, truth: str) -> float:
-        return 1.0 if prediction == truth else 0.0
+    def score(self, prediction: dict | None, truth: dict) -> float:
+        return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
 
 
 CA_TASK_REGISTRY: dict[str, type[BaseTaskHandler]] = {
