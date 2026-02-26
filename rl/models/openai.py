@@ -26,13 +26,17 @@ class OpenAIModel(BaseModel):
             )
 
         self.client = OpenAI(api_key=api_key)
-        self.model_name: str = config["model"]
+        self._model_name: str = config["model"]
         self.temperature: float = config["temperature"]
         self.max_tokens: int = config["max_tokens"]
 
+    @property
+    def model_id(self) -> str:
+        return self._model_name
+
     def generate(self, prompt: str) -> str:
         response = self.client.chat.completions.create(
-            model=self.model_name,
+            model=self._model_name,
             messages=[{"role": "user", "content": prompt}],
             temperature=self.temperature,
             max_tokens=self.max_tokens,
