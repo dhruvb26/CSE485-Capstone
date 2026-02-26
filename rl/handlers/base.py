@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
+from tqdm.auto import tqdm
+
 
 class BaseDatasetHandler(ABC):
     def __init__(self, data_path: Path | str):
@@ -75,11 +77,12 @@ class BaseTaskHandler(ABC):
         model,
         n: int | None = None,
         agent: str = "mturk_agent_1",
+        run_log_path: Path | None = None,
     ) -> dict:
         instances = dataset_handler.get_instances(n)
         results = []
 
-        for instance in instances:
+        for idx, instance in enumerate(tqdm(instances, desc=self.task_id, unit="instance")):
             prompt = self.build_prompt(instance, agent)
             truth = self.ground_truth(instance, agent)
             raw = model.generate(prompt)
@@ -94,6 +97,18 @@ class BaseTaskHandler(ABC):
                     "score": s,
                 }
             )
+            if run_log_path is not None:
+                log_line = {
+                    "task_id": self.task_id,
+                    "instance_idx": idx,
+                    "prompt": prompt,
+                    "raw_output": raw,
+                    "prediction": prediction,
+                    "ground_truth": truth,
+                    "score": s,
+                }
+                with run_log_path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(log_line, ensure_ascii=False) + "\n")
 
         accuracy = sum(r["score"] for r in results) / len(results) if results else 0.0
         return {

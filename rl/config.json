@@ -38,13 +38,8 @@
         }
     },
     "eval": {
-        "n_instances": 50,
+        "n_instances": 200,
         "tasks": {
-            "dnd": [
-                "sta_total_item_count_dnd",
-                "sta_max_points_dnd",
-                "sta_ask_point_values_dnd"
-            ],
             "ca": [
                 "sta_total_item_count_ca",
                 "sta_max_points_ca",
