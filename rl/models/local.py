@@ -30,8 +30,8 @@ class LocalModel(BaseModel):
             self._model_name,
             config["max_seq_length"],
             load_in_4bit=config["load_in_4bit"],
-            fast_inference=True,
-            max_lora_rank=config["lora_rank"],
+            # fast_inference=True,
+            # max_lora_rank=config["lora_rank"],
             gpu_memory_utilization=config["gpu_memory_utilization"],
         )
         FastLanguageModel.for_inference(self.model)

@@ -16,7 +16,7 @@
             "max_tokens": 256
         },
         "local": {
-            "model_name": "unsloth/mistral-7b-instruct-v0.3",
+            "model_name": "unsloth/gpt-oss-20b",
             "max_seq_length": 2048,
             "lora_rank": 32,
             "load_in_4bit": false,
@@ -41,11 +41,11 @@
         "n_instances": 200,
         "tasks": {
             "ca": [
-                "sta_total_item_count_ca",
-                "sta_max_points_ca",
-                "sta_ask_point_values_ca",
-                "sta_ask_high_priority_ca",
-                "sta_ask_low_priority_ca"
+                "mid_strategy_ca",
+                "mid_ask_high_priority_ca",
+                "mid_ask_low_priority_ca",
+                "mid_partner_ask_high_priority_ca",
+                "mid_partner_ask_low_priority_ca"
             ]
         }
     }
