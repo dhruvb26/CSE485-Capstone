@@ -84,6 +84,17 @@ def task_accuracy(log_path: str | Path) -> dict:
             "per_key_accuracy": {k: per_key[k] / n for k in keys},
         }
 
+    # Multi-label task (strategy): ground truth and predictions are lists of labels
+    if pred_list and isinstance(gt_list[0], list):
+        macro_f1 = stats.get("macro_f1")
+        exact_match = stats.get("accuracy")
+        return {
+            **base,
+            "accuracy": macro_f1 if macro_f1 is not None else 0.0,
+            "macro_f1": macro_f1,
+            "exact_match": exact_match,
+        }
+
     # String-valued task (classification / numeric)
     correct = sum(p == g for p, g in zip(pred_list, gt_list))
     n = len(gt_list)
@@ -129,10 +140,13 @@ def print_run_summary(run_dir: str | Path) -> None:
         valid = r.get("valid", 0)
         unique = r.get("unique", valid)
         total = r.get("total", 0)
-        print(f"{name:<55} {acc:>6.1%}  {valid:>5}/{unique:<5} {total:>6}")
+        metric_label = "F1 " if r.get("macro_f1") is not None else "Acc"
+        print(f"{name:<55} {metric_label}{acc:>6.1%}  {valid:>5}/{unique:<5} {total:>6}")
         if "per_key_accuracy" in r:
             for k, v in r["per_key_accuracy"].items():
                 print(f"  {k:<53} {v:>6.1%}")
+        if r.get("exact_match") is not None:
+            print(f"  {'exact-match':<53} {r['exact_match']:>6.1%}")
 
 if __name__ == "__main__":
     print_run_summary("../runs/2026-02-26T22-15-09.997Z")
