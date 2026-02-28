@@ -1,0 +1,30 @@
+data: data/sft/ca_sft.jsonl
+
+# Only tasks listed here are trained on. Set to null to include all.
+tasks:
+  - mid_ask_high_priority_ca
+  - mid_ask_low_priority_ca
+  - mid_partner_ask_high_priority_ca
+  - mid_partner_ask_low_priority_ca
+  - mid_strategy_ca
+
+model_name: unsloth/mistral-7b-instruct-v0.3
+out_dir: checkpoints/sft-lora
+seed: 42
+
+# Rank bumped to 64 (alpha 128) to give the model enough capacity for C3 partner-modeling tasks,
+# which require maintaining theory-of-mind state while reading dialogue history.
+lora:
+  rank: 64
+  alpha: 128
+  dropout: 0.05
+
+training:
+  max_seq_length: 2048
+  load_in_4bit: true
+  lr: 2e-4
+  epochs: 3
+  batch_size: 4
+  grad_accum: 4
+  warmup_ratio: 0.05
+  save_steps: 50

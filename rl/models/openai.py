@@ -2,33 +2,21 @@ import os
 
 from openai import OpenAI
 
+from rl.config import OpenAIModelConfig
 from rl.models.base import BaseModel
-
-_REQUIRED = ("model", "api_key_env", "temperature", "max_tokens")
 
 
 class OpenAIModel(BaseModel):
-    """OpenAI-hosted inference."""
-
-    def __init__(self, config: dict):
-        missing = [k for k in _REQUIRED if k not in config]
-        if missing:
-            raise KeyError(
-                f"Missing required keys in config.model.openai: {missing}"
-            )
-
-        api_key_env: str = config["api_key_env"]
-        api_key = os.environ.get(api_key_env)
+    def __init__(self, cfg: OpenAIModelConfig):
+        api_key = os.environ.get(cfg.api_key_env)
         if not api_key:
             raise EnvironmentError(
-                f"Environment variable '{api_key_env}' is not set. "
-                "Export it before running the script."
+                f"Environment variable '{cfg.api_key_env}' is not set."
             )
-
         self.client = OpenAI(api_key=api_key)
-        self._model_name: str = config["model"]
-        self.temperature: float = config["temperature"]
-        self.max_tokens: int = config["max_tokens"]
+        self._model_name = cfg.model
+        self.temperature = cfg.temperature
+        self.max_tokens = cfg.max_tokens
 
     @property
     def model_id(self) -> str:

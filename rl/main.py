@@ -1,44 +1,27 @@
-"""
-Stage-0 evaluation harness.
-
-Usage (from project root):
-    python -m rl.main
-
-Log files are written in SysEval-compatible format:
-    runs/{timestamp}/{dataset}/{task_id}/{dataset}_{model_id}_{task_id}_{n}.json
-
-To evaluate a completed run offline:
-    from rl.evaluate import print_run_summary
-    print_run_summary("runs/<timestamp>")
-"""
-
-import json
 import logging
-from pathlib import Path
 
+from rl.config import TrainConfig, load_config
 from rl.evaluate import print_run_summary
 from rl.handlers import TASK_REGISTRY, CasinoDatasetHandler, DNDDatasetHandler
 from rl.helpers import create_run_dir
 from rl.models import get_model
 
-CONFIG_PATH = Path("rl/config.json")
-
 logger = logging.getLogger(__name__)
 
 
-def run(config: dict) -> dict:
-    base_dir = Path(config["data"]["base_dir"])
-    n_instances: int = config["eval"]["n_instances"]
+def run(cfg: TrainConfig) -> dict:
+    base_dir = cfg.data.base_dir
+    n_instances = cfg.eval.n_instances
     task_ids: list[str] = [
-        tid for tasks in config["eval"]["tasks"].values() for tid in tasks
+        tid for tasks in cfg.eval.tasks.values() for tid in tasks
     ]
 
-    model = get_model(config)
-    run_dir = create_run_dir(config)
+    model = get_model(cfg)
+    run_dir = create_run_dir(cfg)
     logger.info("run dir: %s  model: %s", run_dir, model.model_id)
 
-    ca_handler = CasinoDatasetHandler(base_dir / config["data"]["casino"]["test"])
-    dnd_handler = DNDDatasetHandler(base_dir / config["data"]["dnd"]["test"])
+    ca_handler = CasinoDatasetHandler(f"{base_dir}/{cfg.data.casino.test}")
+    dnd_handler = DNDDatasetHandler(f"{base_dir}/{cfg.data.dnd.test}")
 
     all_results: dict[str, dict] = {}
 
@@ -63,9 +46,9 @@ def run(config: dict) -> dict:
 
 
 if __name__ == "__main__":
-    config = json.loads(CONFIG_PATH.read_text())
+    cfg = load_config()
     logging.basicConfig(
-        level=config["logging"]["level"],
+        level=cfg.logging.level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    all_results = run(config)
+    run(cfg)

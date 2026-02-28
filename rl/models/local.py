@@ -1,49 +1,27 @@
 from unsloth import FastLanguageModel
-
 import torch
 from transformers import StoppingCriteriaList, StopStringCriteria
 
-from rl.models.base import BaseModel
 
-_REQUIRED = (
-    "model_name",
-    "max_seq_length",
-    "lora_rank",
-    "load_in_4bit",
-    "temperature",
-    "max_new_tokens",
-    "gpu_memory_utilization",
-    "stop_strings",
-)
+from rl.config import LocalModelConfig
+from rl.models.base import BaseModel
 
 
 class LocalModel(BaseModel):
-    """Unsloth-backed local inference model."""
-
-    def __init__(self, config: dict):
-        missing = [k for k in _REQUIRED if k not in config]
-        if missing:
-            raise KeyError(f"Missing required keys in config.model.local: {missing}")
-
-        self._model_name: str = config["model_name"]
+    def __init__(self, cfg: LocalModelConfig):
+        self._model_name = cfg.model_name
         self.model, self.tokenizer = FastLanguageModel.from_pretrained(
-            self._model_name,
-            config["max_seq_length"],
-            load_in_4bit=config["load_in_4bit"],
-            # fast_inference=True,
-            # max_lora_rank=config["lora_rank"],
-            gpu_memory_utilization=config["gpu_memory_utilization"],
+            cfg.model_name,
+            cfg.max_seq_length,
+            load_in_4bit=cfg.load_in_4bit,
+            gpu_memory_utilization=cfg.gpu_memory_utilization,
         )
         FastLanguageModel.for_inference(self.model)
 
-        self.max_new_tokens: int = config["max_new_tokens"]
-        self.temperature: float = config["temperature"]
+        self.max_new_tokens = cfg.max_new_tokens
+        self.temperature = cfg.temperature
         self.stopping_criteria = StoppingCriteriaList(
-            [
-                StopStringCriteria(
-                    tokenizer=self.tokenizer, stop_strings=config["stop_strings"]
-                )
-            ]
+            [StopStringCriteria(tokenizer=self.tokenizer, stop_strings=cfg.stop_strings)]
         )
 
     @property

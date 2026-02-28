@@ -1,0 +1,37 @@
+logging:
+  level: INFO
+
+model:
+  type: local
+  openai:
+    model: gpt-4o-mini
+    api_key_env: OPENAI_API_KEY
+    temperature: 0.0
+    max_tokens: 256
+  local:
+    model_name: unsloth/gpt-oss-20b
+    max_seq_length: 2048
+    load_in_4bit: false
+    temperature: 0.0
+    max_new_tokens: 256
+    gpu_memory_utilization: 0.8
+    stop_strings: ["</answer>"]
+
+data:
+  base_dir: data
+  casino:
+    test: casino/ca.test.csv
+    train: casino/ca.train.csv
+  dnd:
+    test: dnd/dnd.test.csv
+    train: dnd/dnd.train.csv
+
+eval:
+  n_instances: 200
+  tasks:
+    ca:
+      - mid_strategy_ca
+      - mid_ask_high_priority_ca
+      - mid_ask_low_priority_ca
+      - mid_partner_ask_high_priority_ca
+      - mid_partner_ask_low_priority_ca

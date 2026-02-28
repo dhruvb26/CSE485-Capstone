@@ -7,6 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
     "convokit>=3.5.0",
     "openai>=2.3.0",
+    "pandas>=2.3.3",
     "peft>=0.17.1",
     "pydantic>=2.12.1",
     "python-dotenv>=1.1.1",
