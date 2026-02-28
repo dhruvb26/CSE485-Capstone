@@ -13,29 +13,48 @@ llm_api_key_env: OPENAI_API_KEY
 default_llm_ratio: 0.0
 
 # Tasks to generate. Only listed tasks are included.
+# sta_* tasks (§5.1 format SFT): fully deterministic, zero LLM cost — teach the model
+# to emit valid schema before any task-specific reasoning is introduced.
+# mid_* tasks (§5.2/5.3): self-priority is deterministic; partner inference uses LLM thoughts.
 tasks:
-  - mid_ask_high_priority_ca
-  - mid_ask_low_priority_ca
-  - mid_partner_ask_high_priority_ca
-  - mid_partner_ask_low_priority_ca
-  - mid_strategy_ca
+  - sta_total_item_count_ca
+  - sta_max_points_ca
+  - sta_ask_point_values_ca
+  - sta_ask_high_priority_ca
+  - sta_ask_low_priority_ca
+  # - mid_ask_high_priority_ca
+  # - mid_ask_low_priority_ca
+  # - mid_partner_ask_high_priority_ca
+  # - mid_partner_ask_low_priority_ca
+  # - mid_strategy_ca
 
 # Per-task LLM ratio overrides (0.0–1.0). Tasks not listed use default_llm_ratio.
-# mid_ask_*: fully deterministic — model just re-reads its own <value> block.
-# mid_partner_*: LLM must ground reasoning in actual dialogue signals (set to 1.0).
-# mid_strategy_ca: partial LLM so thoughts explain *why* each strategy label applies.
+# sta_*: always deterministic.
+# mid_ask_*: deterministic — model re-reads its own <value> block; dialogue context is noise.
+# mid_partner_*: LLM must reason from actual dialogue signals, not private metadata.
+# mid_strategy_ca: partial LLM so thoughts explain *why* each label applies.
 llm_ratios:
-  mid_ask_high_priority_ca: 0.0
-  mid_ask_low_priority_ca: 0.0
-  mid_partner_ask_high_priority_ca: 1.0
-  mid_partner_ask_low_priority_ca: 1.0
-  mid_strategy_ca: 0.3
+  sta_total_item_count_ca: 0.0
+  sta_max_points_ca: 0.0
+  sta_ask_point_values_ca: 0.0
+  sta_ask_high_priority_ca: 0.0
+  sta_ask_low_priority_ca: 0.0
+  # mid_ask_high_priority_ca: 0.0
+  # mid_ask_low_priority_ca: 0.0
+  # mid_partner_ask_high_priority_ca: 1.0
+  # mid_partner_ask_low_priority_ca: 1.0
+  # mid_strategy_ca: 0.3
 
 # Per-task weight overrides for max_total budget distribution. Tasks not listed use 1.0.
-# Partner tasks up-weighted: harder (C3), fewer examples per dialogue, highest value to develop.
+# Partner tasks up-weighted: harder (C3), fewer examples per dialogue, highest payoff.
 weights:
-  mid_ask_high_priority_ca: 1.0
-  mid_ask_low_priority_ca: 1.0
-  mid_partner_ask_high_priority_ca: 2.0
-  mid_partner_ask_low_priority_ca: 2.0
-  mid_strategy_ca: 1.5
+  sta_total_item_count_ca: 0.5
+  sta_max_points_ca: 0.5
+  sta_ask_point_values_ca: 0.5
+  sta_ask_high_priority_ca: 0.5
+  sta_ask_low_priority_ca: 0.5
+  # mid_ask_high_priority_ca: 1.0
+  # mid_ask_low_priority_ca: 1.0
+  # mid_partner_ask_high_priority_ca: 2.0
+  # mid_partner_ask_low_priority_ca: 2.0
+  # mid_strategy_ca: 1.5

@@ -1,4 +1,3 @@
-from unsloth import FastLanguageModel
 from __future__ import annotations
 
 import json
@@ -7,6 +6,7 @@ from pathlib import Path
 
 from datasets import Dataset
 from trl import SFTConfig, SFTTrainer
+from unsloth import FastLanguageModel
 
 
 from rl.config import SFTTrainConfig, load_train_config
