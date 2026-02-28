@@ -1,18 +1,16 @@
 import fnmatch
 import json
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 from tqdm.auto import tqdm
 
+from rl.config import TrainConfig
 
-def create_run_dir(config: dict, runs_dir: Path | None = None) -> Path:
-    """Create a timestamped run directory, write config.json, return run_dir.
 
-    Log files are written under run_dir / {dataset} / {task_id} /
-    {dataset}_{model_id}_{task_id}_{n}.json in SysEval-compatible format.
-    """
+def create_run_dir(cfg: TrainConfig, runs_dir: Path | None = None) -> Path:
     if runs_dir is None:
         runs_dir = Path.cwd() / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -21,19 +19,9 @@ def create_run_dir(config: dict, runs_dir: Path | None = None) -> Path:
     run_dir = runs_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "config.json").write_text(
-        json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(asdict(cfg), indent=2, ensure_ascii=False), encoding="utf-8"
     )
     return run_dir
-
-
-def load_json(file_path: str) -> dict:
-    """Load a JSON file into a dictionary."""
-    try:
-        with open(file_path, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"Error loading file {file_path}: {e}")
-        return None
 
 
 def download_data(out_dir: Path = Path("data")) -> list[Path]:
