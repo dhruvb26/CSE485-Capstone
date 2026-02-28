@@ -31,6 +31,7 @@ class LocalModelConfig:
     max_new_tokens: int
     gpu_memory_utilization: float
     stop_strings: list[str]
+    adapter_path: str | None = None
 
 
 @dataclass

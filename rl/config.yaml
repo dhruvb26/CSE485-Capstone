@@ -9,13 +9,17 @@ model:
     temperature: 0.0
     max_tokens: 256
   local:
-    model_name: unsloth/gpt-oss-20b
+    model_name: unsloth/mistral-7b-instruct-v0.3
     max_seq_length: 2048
-    load_in_4bit: false
+    load_in_4bit: true
     temperature: 0.0
     max_new_tokens: 256
     gpu_memory_utilization: 0.8
     stop_strings: ["</answer>"]
+    # Set to the saved adapter directory to evaluate a fine-tuned model.
+    # Phase 1 (format SFT):  adapter_path: checkpoints/sft-format/adapter
+    # Phase 2 (full mid_*):  adapter_path: checkpoints/sft-lora/adapter
+    adapter_path: checkpoints/sft-format/adapter
 
 data:
   base_dir: data
@@ -28,10 +32,11 @@ data:
 
 eval:
   n_instances: 200
+  # Phase 1: eval on sta_* to verify valid/total ≈ 1.0 before moving to mid_* training.
   tasks:
     ca:
-      - mid_strategy_ca
-      - mid_ask_high_priority_ca
-      - mid_ask_low_priority_ca
-      - mid_partner_ask_high_priority_ca
-      - mid_partner_ask_low_priority_ca
+      - sta_total_item_count_ca
+      - sta_max_points_ca
+      - sta_ask_point_values_ca
+      - sta_ask_high_priority_ca
+      - sta_ask_low_priority_ca
