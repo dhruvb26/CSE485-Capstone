@@ -4,7 +4,7 @@ seed: 42
 dedup: true
 
 # Hard cap on total examples written across all tasks. Set to null for no cap.
-max_total: null
+max_total: 1000
 
 llm_model: gpt-4o-mini
 llm_api_key_env: OPENAI_API_KEY
@@ -17,16 +17,16 @@ default_llm_ratio: 0.0
 # to emit valid schema before any task-specific reasoning is introduced.
 # mid_* tasks (§5.2/5.3): self-priority is deterministic; partner inference uses LLM thoughts.
 tasks:
-  - sta_total_item_count_ca
-  - sta_max_points_ca
-  - sta_ask_point_values_ca
-  - sta_ask_high_priority_ca
-  - sta_ask_low_priority_ca
-  # - mid_ask_high_priority_ca
-  # - mid_ask_low_priority_ca
-  # - mid_partner_ask_high_priority_ca
-  # - mid_partner_ask_low_priority_ca
-  # - mid_strategy_ca
+  # - sta_total_item_count_ca
+  # - sta_max_points_ca
+  # - sta_ask_point_values_ca
+  # - sta_ask_high_priority_ca
+  # - sta_ask_low_priority_ca
+  - mid_ask_high_priority_ca
+  - mid_ask_low_priority_ca
+  - mid_partner_ask_high_priority_ca
+  - mid_partner_ask_low_priority_ca
+  - mid_strategy_ca
 
 # Per-task LLM ratio overrides (0.0–1.0). Tasks not listed use default_llm_ratio.
 # sta_*: always deterministic.
@@ -34,27 +34,27 @@ tasks:
 # mid_partner_*: LLM must reason from actual dialogue signals, not private metadata.
 # mid_strategy_ca: partial LLM so thoughts explain *why* each label applies.
 llm_ratios:
-  sta_total_item_count_ca: 0.0
-  sta_max_points_ca: 0.0
-  sta_ask_point_values_ca: 0.0
-  sta_ask_high_priority_ca: 0.0
-  sta_ask_low_priority_ca: 0.0
-  # mid_ask_high_priority_ca: 0.0
-  # mid_ask_low_priority_ca: 0.0
-  # mid_partner_ask_high_priority_ca: 1.0
-  # mid_partner_ask_low_priority_ca: 1.0
-  # mid_strategy_ca: 0.3
+  # sta_total_item_count_ca: 0.0
+  # sta_max_points_ca: 0.0
+  # sta_ask_point_values_ca: 0.0
+  # sta_ask_high_priority_ca: 0.0
+  # sta_ask_low_priority_ca: 0.0
+  mid_ask_high_priority_ca: 0.0
+  mid_ask_low_priority_ca: 0.0
+  mid_partner_ask_high_priority_ca: 1.0
+  mid_partner_ask_low_priority_ca: 1.0
+  mid_strategy_ca: 0.3
 
 # Per-task weight overrides for max_total budget distribution. Tasks not listed use 1.0.
 # Partner tasks up-weighted: harder (C3), fewer examples per dialogue, highest payoff.
 weights:
-  sta_total_item_count_ca: 0.5
-  sta_max_points_ca: 0.5
-  sta_ask_point_values_ca: 0.5
-  sta_ask_high_priority_ca: 0.5
-  sta_ask_low_priority_ca: 0.5
-  # mid_ask_high_priority_ca: 1.0
-  # mid_ask_low_priority_ca: 1.0
-  # mid_partner_ask_high_priority_ca: 2.0
-  # mid_partner_ask_low_priority_ca: 2.0
-  # mid_strategy_ca: 1.5
+  # sta_total_item_count_ca: 0.5
+  # sta_max_points_ca: 0.5
+  # sta_ask_point_values_ca: 0.5
+  # sta_ask_high_priority_ca: 0.5
+  # sta_ask_low_priority_ca: 0.5
+  mid_ask_high_priority_ca: 1.0
+  mid_ask_low_priority_ca: 1.0
+  mid_partner_ask_high_priority_ca: 2.0
+  mid_partner_ask_low_priority_ca: 2.0
+  mid_strategy_ca: 1.5
