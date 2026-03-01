@@ -5,7 +5,11 @@ data: data/sft/ca_sft.jsonl
 # Once valid/total ≈ 1.0 on sta_* eval, add mid_* tasks for phase 2.
 tasks: null
 
-model_name: checkpoints/sft-format/adapter
+# Base pretrained model (HuggingFace ID or local path). Always required.
+model_name: unsloth/mistral-7b-instruct-v0.3
+# Path to an existing LoRA adapter to resume training from. Set to null for a fresh LoRA.
+# When set, model_name must be the matching base model used when that adapter was created.
+adapter_path: checkpoints/sft-format/adapter
 out_dir: checkpoints/sft-mid
 seed: 42
 

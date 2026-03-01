@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 from datasets import Dataset
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import SFTConfig, SFTTrainer
 
@@ -66,46 +66,51 @@ def train(cfg: SFTTrainConfig) -> None:
             bnb_4bit_use_double_quant=True,
         )
     
-    # Load model and tokenizer
+    # Load base model — model_name always points to the base pretrained model.
     model = AutoModelForCausalLM.from_pretrained(
         cfg.model_name,
         quantization_config=quantization_config,
         device_map="auto",
         trust_remote_code=True,
     )
-    
+
+    # Tokenizer comes from the base model regardless of whether an adapter is used.
     tokenizer = AutoTokenizer.from_pretrained(
         cfg.model_name,
         trust_remote_code=True,
     )
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
-    
-    # Prepare model for training
+
     if t.load_in_4bit:
         model = prepare_model_for_kbit_training(model)
-    
+
     model.config.use_cache = False
-    
-    # Configure LoRA
-    peft_config = LoraConfig(
-        r=cfg.lora.rank,
-        lora_alpha=cfg.lora.alpha,
-        lora_dropout=cfg.lora.dropout,
-        target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-        ],
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    
-    model = get_peft_model(model, peft_config)
+
+    if cfg.adapter_path:
+        # Resume training from an existing LoRA adapter — do not stack a new one.
+        logger.info("Loading existing LoRA adapter from %s", cfg.adapter_path)
+        model = PeftModel.from_pretrained(model, cfg.adapter_path, is_trainable=True)
+    else:
+        # Fresh LoRA — apply adapters to all standard projection layers.
+        logger.info("Initialising fresh LoRA (rank=%d, alpha=%d)", cfg.lora.rank, cfg.lora.alpha)
+        peft_config = LoraConfig(
+            r=cfg.lora.rank,
+            lora_alpha=cfg.lora.alpha,
+            lora_dropout=cfg.lora.dropout,
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+            ],
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, peft_config)
 
     rows = load_jsonl(cfg.data, tasks=cfg.tasks)
     if not rows:
@@ -151,6 +156,7 @@ def train(cfg: SFTTrainConfig) -> None:
         json.dump(
             {
                 "model_name": cfg.model_name,
+                "adapter_path": cfg.adapter_path,
                 "tasks": cfg.tasks,
                 "n_examples": len(rows),
                 "lora_rank": cfg.lora.rank,

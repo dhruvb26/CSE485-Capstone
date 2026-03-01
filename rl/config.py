@@ -122,6 +122,10 @@ class SFTTrainConfig:
     seed: int
     lora: LoraConfig
     training: TrainingConfig
+    # Path to an existing LoRA adapter to resume training from.
+    # When set, model_name must be the base model and the adapter is loaded on top.
+    # When null, a fresh LoRA is applied to the base model.
+    adapter_path: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> SFTTrainConfig:
@@ -133,6 +137,7 @@ class SFTTrainConfig:
             seed=d["seed"],
             lora=LoraConfig(**d["lora"]),
             training=TrainingConfig(**d["training"]),
+            adapter_path=d.get("adapter_path"),
         )
 
 
