@@ -4,10 +4,11 @@ import json
 import logging
 from pathlib import Path
 
+import torch
 from datasets import Dataset
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import SFTConfig, SFTTrainer
-from unsloth import FastLanguageModel
-
 
 from rl.config import SFTTrainConfig, load_train_config
 
@@ -54,15 +55,40 @@ def tokenise_dataset(rows: list[dict], tokenizer, max_seq_length: int):
 
 def train(cfg: SFTTrainConfig) -> None:
     t = cfg.training
-    model, tokenizer = FastLanguageModel.from_pretrained(
+    
+    # Configure quantization if needed
+    quantization_config = None
+    if t.load_in_4bit:
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+        )
+    
+    # Load model and tokenizer
+    model = AutoModelForCausalLM.from_pretrained(
         cfg.model_name,
-        max_seq_length=t.max_seq_length,
-        load_in_4bit=t.load_in_4bit,
-        fast_inference=False,
+        quantization_config=quantization_config,
+        device_map="auto",
+        trust_remote_code=True,
     )
-
-    model = FastLanguageModel.get_peft_model(
-        model,
+    
+    tokenizer = AutoTokenizer.from_pretrained(
+        cfg.model_name,
+        trust_remote_code=True,
+    )
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
+    
+    # Prepare model for training
+    if t.load_in_4bit:
+        model = prepare_model_for_kbit_training(model)
+    
+    model.config.use_cache = False
+    
+    # Configure LoRA
+    peft_config = LoraConfig(
         r=cfg.lora.rank,
         lora_alpha=cfg.lora.alpha,
         lora_dropout=cfg.lora.dropout,
@@ -75,9 +101,11 @@ def train(cfg: SFTTrainConfig) -> None:
             "up_proj",
             "down_proj",
         ],
-        use_gradient_checkpointing="unsloth",
-        random_state=cfg.seed,
+        bias="none",
+        task_type="CAUSAL_LM",
     )
+    
+    model = get_peft_model(model, peft_config)
 
     rows = load_jsonl(cfg.data, tasks=cfg.tasks)
     if not rows:
@@ -91,13 +119,13 @@ def train(cfg: SFTTrainConfig) -> None:
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
         train_dataset=dataset,
         args=SFTConfig(
             output_dir=str(out_dir),
             num_train_epochs=t.epochs,
             per_device_train_batch_size=t.batch_size,
             gradient_accumulation_steps=t.grad_accum,
+            gradient_checkpointing=True,
             learning_rate=t.lr,
             warmup_ratio=t.warmup_ratio,
             lr_scheduler_type="cosine",
@@ -108,7 +136,6 @@ def train(cfg: SFTTrainConfig) -> None:
             save_total_limit=2,
             seed=cfg.seed,
             dataset_text_field=None,
-            max_seq_length=t.max_seq_length,
             report_to="none",
         ),
     )

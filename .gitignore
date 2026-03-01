@@ -20,14 +20,11 @@ __MACOSX/
 
 # Cache
 .cache/
+unsloth_compiled_cache/
 
-# Model training artifacts
+# Other
 finetune/training_output/
 finetune/pretrained_models/
 finetune/tokenizers/
-
-# Data
-formatted_data/
-
-# Literature
+checkpoints/
 literature/
