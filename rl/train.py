@@ -6,9 +6,9 @@ from pathlib import Path
 
 import torch
 from datasets import Dataset
-from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from trl import SFTConfig, SFTTrainer
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, set_peft_model_state_dict
+from safetensors.torch import load_file as load_safetensors
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForSeq2Seq, Trainer, TrainingArguments
 
 from rl.config import SFTTrainConfig, load_train_config
 
@@ -88,11 +88,27 @@ def train(cfg: SFTTrainConfig) -> None:
     model.config.use_cache = False
 
     if cfg.adapter_path:
-        # Resume training from an existing LoRA adapter — do not stack a new one.
         logger.info("Loading existing LoRA adapter from %s", cfg.adapter_path)
-        model = PeftModel.from_pretrained(model, cfg.adapter_path, is_trainable=True)
+        saved_lora_config = LoraConfig.from_pretrained(cfg.adapter_path)
+        saved_lora_config.inference_mode = False
+        if cfg.lora.rank != saved_lora_config.r:
+            logger.warning(
+                "lora.rank=%d in config is ignored when resuming from an adapter; "
+                "using rank=%d from the loaded checkpoint.",
+                cfg.lora.rank,
+                saved_lora_config.r,
+            )
+        model = get_peft_model(model, saved_lora_config)
+        adapter_weights = load_safetensors(
+            str(Path(cfg.adapter_path) / "adapter_model.safetensors")
+        )
+        set_peft_model_state_dict(model, adapter_weights)
+        logger.info(
+            "Resuming LoRA (rank=%d, alpha=%d)",
+            saved_lora_config.r,
+            saved_lora_config.lora_alpha,
+        )
     else:
-        # Fresh LoRA — apply adapters to all standard projection layers.
         logger.info("Initialising fresh LoRA (rank=%d, alpha=%d)", cfg.lora.rank, cfg.lora.alpha)
         peft_config = LoraConfig(
             r=cfg.lora.rank,
@@ -122,26 +138,30 @@ def train(cfg: SFTTrainConfig) -> None:
     out_dir = Path(cfg.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    trainer = SFTTrainer(
+    collator = DataCollatorForSeq2Seq(tokenizer, padding=True)
+
+    trainer = Trainer(
         model=model,
         train_dataset=dataset,
-        args=SFTConfig(
+        tokenizer=tokenizer,
+        data_collator=collator,
+        args=TrainingArguments(
             output_dir=str(out_dir),
             num_train_epochs=t.epochs,
             per_device_train_batch_size=t.batch_size,
             gradient_accumulation_steps=t.grad_accum,
-            gradient_checkpointing=True,
+            gradient_checkpointing=False,
             learning_rate=t.lr,
             warmup_ratio=t.warmup_ratio,
             lr_scheduler_type="cosine",
-            fp16=not t.load_in_4bit,
+            fp16=True,
             bf16=False,
             logging_steps=10,
             save_steps=t.save_steps,
             save_total_limit=2,
             seed=cfg.seed,
-            dataset_text_field=None,
             report_to="none",
+            remove_unused_columns=False,
         ),
     )
 
@@ -152,6 +172,7 @@ def train(cfg: SFTTrainConfig) -> None:
     tokenizer.save_pretrained(str(adapter_dir))
     logger.info("LoRA adapter saved to %s", adapter_dir)
 
+    peft_cfg = model.peft_config["default"]
     with (out_dir / "train_meta.json").open("w") as f:
         json.dump(
             {
@@ -159,8 +180,8 @@ def train(cfg: SFTTrainConfig) -> None:
                 "adapter_path": cfg.adapter_path,
                 "tasks": cfg.tasks,
                 "n_examples": len(rows),
-                "lora_rank": cfg.lora.rank,
-                "lora_alpha": cfg.lora.alpha,
+                "lora_rank": peft_cfg.r,
+                "lora_alpha": peft_cfg.lora_alpha,
                 "epochs": t.epochs,
                 "lr": t.lr,
             },
