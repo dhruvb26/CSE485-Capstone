@@ -27,6 +27,8 @@ console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
+discord = 'https://discord.com/api/webhooks/708632318599888957/Uo3X8GPac_g3mRGPzrGHvl0805p4AWUu9ZotQAIUydxF7E58cTkPgsHhjGJobknIeOXv'
+
 from typing import Dict
 import time
 import copy
@@ -48,7 +50,9 @@ from utils import (
     load_product,
     shopping_list,
     start_vllm_wait,
-    stop_vllm
+    stop_vllm,
+    send_discord_webhook,
+    load_product_from_file
 )
 from main import _get_client
 from main import run_dialog
@@ -58,7 +62,8 @@ from main import run_dialog
 This GRPO Layout is to follow a simple terminal reward self play RL Design, this is an initial design and code implementation
 '''
 
-dataset_dir = 'data/amazon_history_price' #directory of location of dataset
+dataset_dir = 'data/amazon_history_train' #directory of location of dataset
+dataset_file = 'data/amazon_history_train/train.json'
 product_limit = 10 #limit on number of products to train on 
 
 class GRPO:
@@ -345,16 +350,20 @@ if __name__ == "__main__":
 
     #updated/session configurations !!! Need to update save_path at least
     #URGENT!
-    update_every = 64
-    load_every = 2
-    product_limit = 6
+    loops_through_training_split = 2 #1 or more
+    update_every = 128
+    load_every = 4
+    product_limit = 651 #len of training split is 651
     save_path = f"/scratch/bbreisc1/bbreisc1/grpo_qwen_checkpoint"
     cache_directory= f'/scratch/bbreisc1/bbreisc1/hf_cache_qwen/'
     current_weights_path = "Qwen/Qwen2.5-7B-Instruct"
     to_load_from_path = "/scratch/bbreisc1/bbreisc1/qwen_model"
+
+
     #not a parameter
     update_count = 0
-    checkpoint_count = 0
+    vllm_update_count = 0
+    pair_count = 0
 
     #History Buffers
     buyer_buffer_q = []
@@ -371,87 +380,108 @@ if __name__ == "__main__":
     logger.info(f'vLLM started with PID {proc.pid}')
 
     try:
-        for i in range(product_limit):
-            item = load_product(dataset_dir, product_index=i)
-            #log item loaded
-            logger.info(f"Item loaded: {item['title']}")
+        for j in range(loops_through_training_split):
+            send_discord_webhook(discord, f'Starting Training Split Loop #{j}')
+            for i in range(product_limit):
+                send_discord_webhook(discord, f'Starting Product #{i}')
+                start_one_session = time.time()
+                start_one_updated = time.time()
 
-            result = run_single_grpo(
-                GRPO=test_grpo,
-                item=item,
-                max_turns=10
-            )
-            #log session ran
-            logger.info(f"Session complete for item: {item['title']}")
+                item = load_product_from_file(dataset_file, product_index=i)
+                #log item loaded
+                logger.info(f"Item loaded: {item['title']}")
 
-            buyer_buffer_q.extend(result["buyer_queries"])
-            buyer_buffer_r.extend(result["buyer_responses"])
-            buyer_buffer_a.extend(result["buyer_advantage"])
+                result = run_single_grpo(
+                    GRPO=test_grpo,
+                    item=item,
+                    max_turns=10
+                )
+                #log session ran
+                logger.info(f"Session complete for item: {item['title']}")
 
-            seller_buffer_q.extend(result["seller_queries"])
-            seller_buffer_r.extend(result["seller_responses"])
-            seller_buffer_a.extend(result["seller_advantage"])
-            #log results extracted
-            logger.info(f"Results extracted for session over {item['title']}")
-            #maybe log results
+                buyer_buffer_q.extend(result["buyer_queries"])
+                buyer_buffer_r.extend(result["buyer_responses"])
+                buyer_buffer_a.extend(result["buyer_advantage"])
 
-            if len(buyer_buffer_q) + len(seller_buffer_q) >= update_every:
-                stop_vllm(proc)
-                time.sleep(15)  # increase from 10 to 15
-                gc.collect()
-                torch.cuda.empty_cache()
-                logger.info(f"GPU memory allocated before loading: {torch.cuda.memory_allocated() / 1024**3:.2f} GiB")
-                logger.info(f"GPU memory reserved before loading: {torch.cuda.memory_reserved() / 1024**3:.2f} GiB")
-                
-                
-                #log updated starting
-                logger.info(f'Starting weight update #{update_count + 1}, with #{len(buyer_buffer_q) + len(seller_buffer_q)} updates')
+                seller_buffer_q.extend(result["seller_queries"])
+                seller_buffer_r.extend(result["seller_responses"])
+                seller_buffer_a.extend(result["seller_advantage"])
+                #log results extracted
+                logger.info(f"Results extracted for session over {item['title']}")
+                #maybe log results
+
+                if len(buyer_buffer_q) + len(seller_buffer_q) >= update_every:
+                    pair_count += (len(buyer_buffer_q) + len(seller_buffer_q))
+
+                    stop_vllm(proc)
+                    time.sleep(15)  # increase from 10 to 15
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                    logger.info(f"GPU memory allocated before loading: {torch.cuda.memory_allocated() / 1024**3:.2f} GiB")
+                    logger.info(f"GPU memory reserved before loading: {torch.cuda.memory_reserved() / 1024**3:.2f} GiB")
 
 
-                model, ref_model, optimizer = load_models_for_training(current_weights_path)
-                model.gradient_checkpointing_enable()
+                    #log updated starting
+                    logger.info(f'Starting weight update #{update_count + 1}, with #{len(buyer_buffer_q) + len(seller_buffer_q)} updates')
 
-                grpo_update_offline(model, ref_model, optimizer,
-                    buyer_buffer_q, buyer_buffer_r, buyer_buffer_a)
-                #log buyer updated completed
-                logger.info(f'Buyer updates complete, #{len(buyer_buffer_q)} updateds completed')
 
-                buyer_buffer_q.clear()
-                buyer_buffer_r.clear()
-                buyer_buffer_a.clear()
-                #log buyer buffers cleared
-                logger.info(f'Buyer buffer cleared')
+                    model, ref_model, optimizer = load_models_for_training(current_weights_path)
+                    model.gradient_checkpointing_enable()
 
-                grpo_update_offline(model, ref_model, optimizer,
-                    seller_buffer_q, seller_buffer_r, seller_buffer_a)
-                #log seller updates complete
-                logger.info(f'Seller updates complete, #{len(seller_buffer_q)} updateds completed')
+                    grpo_update_offline(model, ref_model, optimizer,
+                        buyer_buffer_q, buyer_buffer_r, buyer_buffer_a)
+                    #log buyer updated completed
+                    logger.info(f'Buyer updates complete, #{len(buyer_buffer_q)} updateds completed')
 
-                seller_buffer_q.clear()
-                seller_buffer_r.clear()
-                seller_buffer_a.clear()
-                #log seller buffers cleared
-                logger.info(f'Seller buffer cleared')
+                    buyer_buffer_q.clear()
+                    buyer_buffer_r.clear()
+                    buyer_buffer_a.clear()
+                    #log buyer buffers cleared
+                    logger.info(f'Buyer buffer cleared')
 
-                update_count += 1
-                #log update count
-                logger.info(f'Finished weight updated #{update_count}')
+                    grpo_update_offline(model, ref_model, optimizer,
+                        seller_buffer_q, seller_buffer_r, seller_buffer_a)
+                    #log seller updates complete
+                    logger.info(f'Seller updates complete, #{len(seller_buffer_q)} updateds completed')
 
-                model.save_pretrained(f'{save_path}{update_count}')
-                tokenizer.save_pretrained(f'{save_path}{update_count}')
-                to_load_from_path = f'{save_path}{update_count}'
-                free_models(model, ref_model, optimizer)
+                    seller_buffer_q.clear()
+                    seller_buffer_r.clear()
+                    seller_buffer_a.clear()
+                    #log seller buffers cleared
+                    logger.info(f'Seller buffer cleared')
 
-                if update_count % load_every == 0:
-                    current_weights_path = f'{save_path}{update_count}'
-                    logger.info(f'Loading updated weights into vLLM!')
+                    update_count += 1
+                    #log update count
+                    logger.info(f'Finished weight updated #{update_count}')
 
-                time.sleep(2)
-                logger.info(f"GPU memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GiB")
-                logger.info(f"GPU memory reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GiB")
-                proc = start_vllm_wait(model_path=current_weights_path, cache_dir=cache_directory)
-                #log vllm server restarted
-                logger.info(f'Updated checkpoint vLLM server started, PID: {proc.pid}')
+                    model.save_pretrained(f'{save_path}{update_count}')
+                    tokenizer.save_pretrained(f'{save_path}{update_count}')
+                    to_load_from_path = f'{save_path}{update_count}'
+                    free_models(model, ref_model, optimizer)
 
+                    send_discord_webhook(discord, f'New checkpoint saved #{update_count}, includes #{pair_count} learning points')
+
+                    if update_count % load_every == 0:
+                        current_weights_path = f'{save_path}{update_count}'
+                        logger.info(f'Loading updated weights into vLLM!')
+                        vllm_update_count += 1
+                        send_discord_webhook(discord, f'Attempting to Updae vLLM Server Weights: Weight Updated #{vllm_update_count}')
+
+                    time.sleep(2)
+                    logger.info(f"GPU memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GiB")
+                    logger.info(f"GPU memory reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GiB")
+                    proc = start_vllm_wait(model_path=current_weights_path, cache_dir=cache_directory)
+                    #log vllm server restarted
+                    logger.info(f'Updated checkpoint vLLM server started, PID: {proc.pid}')
+                    end_one_updated = time.time()
+                    #Log time for one update
+                    print("Execution time, one update:", end_one_updated - start_one_updated, "seconds")
+                    logger.info("Execution time, one update: %.4fseconds", end_one_updated - start_one_updated)
+
+                #Log time for one session (One Item)
+                end_one_session = time.time()
+                print("Execution time, one session:", end_one_session - start_one_session, "seconds")
+                logger.info("Execution time, one update: %.4fseconds", end_one_session - start_one_session)
     finally:
         stop_vllm(proc)
+        send_discord_webhook(discord, "vLLM Server Ended, Training Over")

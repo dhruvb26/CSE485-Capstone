@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from typing import Dict, Optional, Tuple
+import random
 
 import requests
 import torch
@@ -140,6 +141,42 @@ def start_vllm_server(
     raise TimeoutError("Timeout waiting for vLLM server readiness")
 
 
+def build_train_test_split_amazon_price_history(dataset_dir: str, train_proportion: float, test_proportion: float, save_to_dir: bool):
+
+    if abs(train_proportion + test_proportion - 1.0) > 1e-6:
+        raise ValueError(f"train_proportion + test_proportion must equal 1.0, got {train_proportion + test_proportion}")
+
+    files = sorted(glob.glob(os.path.join(dataset_dir, "*.json")))
+    if not files:
+        raise FileNotFoundError(f"No JSON files found in {dataset_dir}")
+
+    all_items = []
+    for file_path in files:
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        if not isinstance(data, list) or len(data) == 0:
+            continue
+        all_items.extend(data)
+
+    if not all_items:
+        raise ValueError("No valid items found across all JSON files.")
+
+    random.shuffle(all_items)
+
+    split_idx = int(len(all_items) * train_proportion)
+    train_set = all_items[:split_idx]
+    test_set  = all_items[split_idx:]
+    
+    if save_to_dir:
+        train_path = os.path.join('data/amazon_history_train_test', "train.json")
+        test_path  = os.path.join('data/amazon_history_train_test', "test.json")
+        with open(train_path, "w") as f:
+            json.dump(train_set, f, indent=2)
+        with open(test_path, "w") as f:
+            json.dump(test_set, f, indent=2)
+
+    return train_set, test_set
+
 def load_product(dataset_dir: str, product_index: int = 0) -> Dict:
     """
     Load a product by global index across all JSON files in dataset_dir.
@@ -191,6 +228,36 @@ def load_product(dataset_dir: str, product_index: int = 0) -> Dict:
         f"Product index {product_index} exceeds total products across all JSON files."
     )
 
+
+def load_product_from_file(file_path: str, product_index: int = 0) -> Dict:
+    with open(file_path, "r") as f:
+        data = json.load(f)
+
+    if not isinstance(data, list) or len(data) == 0:
+        raise ValueError(f"File {file_path} is empty or not a list.")
+
+    if product_index >= len(data):
+        raise IndexError(f"Product index {product_index} exceeds total products ({len(data)}) in {file_path}.")
+
+    item = data[product_index]
+    filename = os.path.splitext(os.path.basename(file_path))[0]
+    codename = f"{filename}_{product_index}"
+
+    def parse_price(p):
+        if isinstance(p, (int, float)):
+            return float(p)
+        if isinstance(p, str):
+            return float(p.replace("$", "").replace(",", ""))
+        return 0.0
+
+    return {
+        "title": item.get("title"),
+        "description": item.get("description"),
+        "highest_price": parse_price(item.get("highest_price")),
+        "lowest_price": parse_price(item.get("lowest_price")),
+        "category": item.get("category"),
+        "codename": codename,
+    }
 
 def inventory_list(item: dict) -> str:
     return (
@@ -369,3 +436,13 @@ def stop_vllm(proc):
     except subprocess.TimeoutExpired:
         proc.kill()
     print("vLLM stopped.")
+
+
+def send_discord_webhook(webhook_url: str, message: str, username: str = "Bot"):
+    payload = {
+        "content": message,
+        "username": username
+    }
+    response = requests.post(webhook_url, json=payload)
+    response.raise_for_status()
+    return response.status_code
