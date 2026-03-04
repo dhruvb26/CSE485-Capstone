@@ -5,9 +5,6 @@ from pathlib import Path
 
 import yaml
 
-CONFIG_PATH = Path("rl/config.yaml")
-TRAIN_CONFIG_PATH = Path("rl/train.config.yaml")
-
 
 @dataclass
 class LoggingConfig:
@@ -31,7 +28,7 @@ class LocalModelConfig:
     max_new_tokens: int
     gpu_memory_utilization: float
     stop_strings: list[str]
-    adapter_path: str | None = None
+    adapter_path: str | None
 
 
 @dataclass
@@ -89,10 +86,14 @@ class TrainConfig:
         )
 
 
-def load_config(path: Path = CONFIG_PATH) -> TrainConfig:
+def load_config(path: Path) -> TrainConfig:
     with open(path, encoding="utf-8") as f:
         return TrainConfig.from_dict(yaml.safe_load(f))
 
+
+# ---------------------------------------------------------------------------
+# SFT training config
+# ---------------------------------------------------------------------------
 
 @dataclass
 class LoraConfig:
@@ -122,25 +123,88 @@ class SFTTrainConfig:
     seed: int
     lora: LoraConfig
     training: TrainingConfig
-    # Path to an existing LoRA adapter to resume training from.
-    # When set, model_name must be the base model and the adapter is loaded on top.
-    # When null, a fresh LoRA is applied to the base model.
-    adapter_path: str | None = None
+    adapter_path: str | None
 
     @classmethod
     def from_dict(cls, d: dict) -> SFTTrainConfig:
         return cls(
             data=d["data"],
-            tasks=d.get("tasks"),
+            tasks=d["tasks"],
             model_name=d["model_name"],
             out_dir=d["out_dir"],
             seed=d["seed"],
             lora=LoraConfig(**d["lora"]),
             training=TrainingConfig(**d["training"]),
-            adapter_path=d.get("adapter_path"),
+            adapter_path=d["adapter_path"],
         )
 
 
-def load_train_config(path: Path = TRAIN_CONFIG_PATH) -> SFTTrainConfig:
+def load_train_config(path: Path) -> SFTTrainConfig:
     with open(path, encoding="utf-8") as f:
         return SFTTrainConfig.from_dict(yaml.safe_load(f))
+
+
+# ---------------------------------------------------------------------------
+# GRPO config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GRPOConfig:
+    candidates_per_turn: int
+    max_turns: int
+    clone_sync_interval: int
+    kl_coeff: float
+    terminal_lambda: float
+    walkaway_penalty: float
+    lora: LoraConfig
+    training: TrainingConfig
+    base_model: str
+    sft_adapter_path: str
+    out_dir: str
+    seed: int
+
+    @classmethod
+    def from_dict(cls, d: dict) -> GRPOConfig:
+        return cls(
+            candidates_per_turn=d["candidates_per_turn"],
+            max_turns=d["max_turns"],
+            clone_sync_interval=d["clone_sync_interval"],
+            kl_coeff=d["kl_coeff"],
+            terminal_lambda=d["terminal_lambda"],
+            walkaway_penalty=d["walkaway_penalty"],
+            lora=LoraConfig(**d["lora"]),
+            training=TrainingConfig(**d["training"]),
+            base_model=d["base_model"],
+            sft_adapter_path=d["sft_adapter_path"],
+            out_dir=d["out_dir"],
+            seed=d["seed"],
+        )
+
+
+@dataclass
+class RewardConfig:
+    terminal_weight: float
+    format_weight: float
+    arithmetic_weight: float
+    strategy_weight: float
+    partner_model_weight: float
+    decay_window: int
+    strategy_classifier_path: str
+
+    @classmethod
+    def from_dict(cls, d: dict) -> RewardConfig:
+        return cls(
+            terminal_weight=d["terminal_weight"],
+            format_weight=d["format_weight"],
+            arithmetic_weight=d["arithmetic_weight"],
+            strategy_weight=d["strategy_weight"],
+            partner_model_weight=d["partner_model_weight"],
+            decay_window=d["decay_window"],
+            strategy_classifier_path=d["strategy_classifier_path"],
+        )
+
+
+def load_grpo_config(path: Path) -> tuple[GRPOConfig, RewardConfig]:
+    with open(path, encoding="utf-8") as f:
+        d = yaml.safe_load(f)
+    return GRPOConfig.from_dict(d["grpo"]), RewardConfig.from_dict(d["reward"])

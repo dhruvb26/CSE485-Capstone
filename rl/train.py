@@ -194,4 +194,4 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s"
     )
-    train(load_train_config())
+    train(load_train_config(Path("rl/train.config.yaml")))
