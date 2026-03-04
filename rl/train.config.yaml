@@ -1,4 +1,4 @@
-data: data/sft/ca_sft.jsonl
+data: data/sft/train.jsonl
 
 # Only tasks listed here are trained on. Set to null to include all.
 # Phase 1 (format SFT): sta_* only — lock in schema compliance before adding task reasoning.

@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from rl.config import TrainConfig, load_config
 from rl.evaluate import print_run_summary
@@ -17,7 +18,7 @@ def run(cfg: TrainConfig) -> dict:
     ]
 
     model = get_model(cfg)
-    run_dir = create_run_dir(cfg)
+    run_dir = create_run_dir(cfg, Path("runs"))
     logger.info("run dir: %s  model: %s", run_dir, model.model_id)
 
     ca_handler = CasinoDatasetHandler(f"{base_dir}/{cfg.data.casino.test}")
@@ -46,7 +47,7 @@ def run(cfg: TrainConfig) -> dict:
 
 
 if __name__ == "__main__":
-    cfg = load_config()
+    cfg = load_config(Path("rl/config.yaml"))
     logging.basicConfig(
         level=cfg.logging.level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

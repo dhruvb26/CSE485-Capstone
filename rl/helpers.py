@@ -10,9 +10,7 @@ from tqdm.auto import tqdm
 from rl.config import TrainConfig
 
 
-def create_run_dir(cfg: TrainConfig, runs_dir: Path | None = None) -> Path:
-    if runs_dir is None:
-        runs_dir = Path.cwd() / "runs"
+def create_run_dir(cfg: TrainConfig, runs_dir: Path) -> Path:
     runs_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc)
     run_id = ts.strftime("%Y-%m-%dT%H-%M-%S.") + ts.strftime("%f")[:3] + "Z"
@@ -24,7 +22,7 @@ def create_run_dir(cfg: TrainConfig, runs_dir: Path | None = None) -> Path:
     return run_dir
 
 
-def download_data(out_dir: Path = Path("data")) -> list[Path]:
+def download_data(out_dir: Path) -> list[Path]:
     """Download data from the GitHub repository and return the list of paths to the downloaded files."""
     OWNER = "dhruvb26"
     REPO = "SysEval-NegoLLMs"
