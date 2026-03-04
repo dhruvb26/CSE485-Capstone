@@ -6,6 +6,8 @@ from typing import Any
 
 from tqdm.auto import tqdm
 
+from rl.verifiers.format import parse_xml_turn
+
 
 class BaseDatasetHandler(ABC):
     def __init__(self, data_path: Path | str):
@@ -48,8 +50,8 @@ class BaseTaskHandler(ABC):
     def extract_number(self, text: str) -> str | None:
         """Return the first integer (including negative) found in text.
 
-        If *text* is a ``{thought, talk, action}`` turn-schema JSON, the
-        ``thought`` field is searched as well.
+        If *text* uses the XML turn schema, the ``<thought>`` content is
+        searched as well.
         """
         m = re.search(r"-?\d+", text)
         if m:
@@ -62,16 +64,20 @@ class BaseTaskHandler(ABC):
         return None
 
     def _parse_turn_json(self, text: str) -> dict | None:
-        """If *text* is a ``{thought, talk, action}`` turn-schema JSON,
-        return the parsed dict.  Otherwise ``None``."""
-        raw = self._extract_json_raw(text)
-        if (
-            isinstance(raw, dict)
-            and "thought" in raw
-            and "action" in raw
-        ):
-            return raw
-        return None
+        """If *text* uses the XML turn schema (``<thought>…<action>``),
+        return a dict with ``thought``, ``talk``, ``action`` keys."""
+        parsed = parse_xml_turn(text)
+        if parsed is None:
+            return None
+        try:
+            action = json.loads(parsed["action_raw"])
+        except json.JSONDecodeError:
+            action = parsed["action_raw"]
+        return {
+            "thought": parsed["thought"],
+            "talk": parsed["talk"],
+            "action": action,
+        }
 
     def extract_from_turn_thought(self, text: str) -> dict:
         """Parse structured facts out of a turn-schema ``thought`` string.
@@ -85,8 +91,8 @@ class BaseTaskHandler(ABC):
         ``values``, ``max_points``, ``partner_priority``, ``my_priority``,
         ``my_low_priority``, ``decision``.
         """
-        turn = self._parse_turn_json(text)
-        thought = turn.get("thought", "") if turn else ""
+        parsed = parse_xml_turn(text)
+        thought = parsed["thought"] if parsed is not None else ""
         if not thought:
             return {}
 
@@ -122,18 +128,19 @@ class BaseTaskHandler(ABC):
         """Try to parse a JSON object from text.
 
         Strategy:
-        1. Content inside ``<answer>…</answer>`` tags
-        2. Whole text as JSON
-        3. First ``{…}`` block
-        4. If the result is a turn-schema, return the ``action`` dict
+        1. XML turn schema (``<thought>…<action>``) → return the action dict
+        2. Content inside ``<answer>…</answer>`` tags
+        3. Whole text as JSON
+        4. First ``{…}`` block
         """
-        raw = self._extract_json_raw(text)
-        if raw is None:
-            return None
-        if isinstance(raw, dict) and "thought" in raw and "action" in raw:
-            action = raw.get("action")
-            return action if isinstance(action, dict) else raw
-        return raw
+        parsed = parse_xml_turn(text)
+        if parsed is not None:
+            try:
+                return json.loads(parsed["action_raw"])
+            except json.JSONDecodeError:
+                pass
+
+        return self._extract_json_raw(text)
 
     def _extract_json_raw(self, text: str) -> dict | None:
         """Inner helper: parse JSON from text without unwrapping."""

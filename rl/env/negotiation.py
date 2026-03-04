@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from rl.env.actions import Action, ActionType
 from rl.env.personas import Persona
 from rl.env.scenario import ITEMS, Scenario
-from rl.verifiers.format import check_format
+from rl.verifiers.format import parse_xml_turn
 
 
 @dataclass
@@ -153,7 +153,9 @@ class NegotiationEnv:
             lines.append("")
 
         lines.append(
-            "Respond with a JSON object containing: thought, talk, action."
+            "Respond using XML tags: <thought>reasoning</thought> "
+            "<talk>your message</talk> "
+            '<action>{"type": "...", ...allocations}</action>'
         )
         return "\n".join(lines)
 
@@ -177,7 +179,9 @@ class NegotiationEnv:
             lines.append("")
 
         lines.append(
-            "Respond with a JSON object containing: thought, talk, action."
+            "Respond using XML tags: <thought>reasoning</thought> "
+            "<talk>your message</talk> "
+            '<action>{"type": "...", ...allocations}</action>'
         )
         return "\n".join(lines)
 
@@ -186,31 +190,23 @@ def _parse_agent_output(
     raw: str, scenario: Scenario
 ) -> tuple[str, str, Action | None, bool]:
     """Parse raw model output into (thought, talk, action, valid)."""
-    fmt_ok, _ = check_format(raw)
-    if not fmt_ok:
+    parsed = parse_xml_turn(raw)
+    if parsed is None:
         return "", raw.strip(), None, False
 
+    thought = parsed["thought"]
+    talk = parsed["talk"]
+
     try:
-        parsed = json.loads(raw.strip())
+        action_dict = json.loads(parsed["action_raw"])
     except json.JSONDecodeError:
-        import re
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if not m:
-            return "", raw.strip(), None, False
-        try:
-            parsed = json.loads(m.group(0))
-        except json.JSONDecodeError:
-            return "", raw.strip(), None, False
+        return thought, talk, None, False
 
-    thought = str(parsed.get("thought", ""))
-    talk = str(parsed.get("talk", ""))
-
-    action_raw = parsed.get("action")
-    if not isinstance(action_raw, dict) or "type" not in action_raw:
+    if not isinstance(action_dict, dict) or "type" not in action_dict:
         return thought, talk, None, False
 
     try:
-        action = Action.from_dict(action_raw)
+        action = Action.from_dict(action_dict)
     except (ValueError, KeyError):
         return thought, talk, None, False
 
