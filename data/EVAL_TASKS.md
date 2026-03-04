@@ -73,3 +73,31 @@ python main.py --storage_dir storage/ --dataset_name casino --model_name open_ai
 ```
 
 The commands above can be run in the fork of the original repo [here](https://github.com/dhruvb26/SysEval-NegoLLMs) because we've added the ability to run the tasks with both Hugging Face and OpenAI models in newer versions of the libraries. 
+
+## Baseline
+
+### Casino
+
+| Metric | Scoring | GPT-4o-mini | Mistral-7B | n |
+|---|---|---|---|---|
+| end_deal_specifics_ca | elementwise_accuracy | 0.6833 | 0.5028 | 120 |
+| end_deal_total_ca | accuracy | 0.1083 | 0.1417 | 120 |
+| mid_partner_ask_high_priority_ca | accuracy | 0.7583 | 0.4750 | 120 |
+| mid_partner_ask_low_priority_ca | accuracy | 0.4833 | 0.3750 | 120 |
+| mid_strategy_ca | f1_per_class | 0.4565 | 0.2420 | 200 |
+| sta_ask_high_priority_ca | accuracy | 0.8333 | 0.0000 | 6 |
+| sta_ask_low_priority_ca | accuracy | 1.0000 | 0.5000 | 6 |
+| sta_ask_point_values_ca | elementwise_accuracy | 1.0000 | 1.0000 | 6 |
+| sta_max_points_ca | accuracy | 1.0000 | 0.5000 | 6 |
+| sta_total_item_count_ca | accuracy | 1.0000 | 1.0000 | 6 |
+
+### DnD
+
+| Metric | Scoring | GPT-4o-mini | Mistral-7B | n |
+|---|---|---|---|---|
+| end_deal_specifics_dnd | elementwise_accuracy | 0.8083 | 0.5575 | 113 |
+| end_deal_total_dnd | accuracy | 0.5575 | 0.2301 | 113 |
+| mid_full_proposal_dnd | elementwise_accuracy | 0.7633 | 0.6467 | 200 |
+| sta_ask_point_values_dnd | elementwise_accuracy | 1.0000 | 1.0000 | 101 |
+| sta_max_points_dnd | accuracy | 0.7426 | 0.3465 | 101 |
+| sta_total_item_count_dnd | accuracy | 1.0000 | 0.9802 | 101 |

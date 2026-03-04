@@ -1,9 +1,12 @@
 """Turn-level SFT generators for CaSiNo, DND, and CraigslistBargain.
 
 Each generator walks through real dialogues turn-by-turn and produces
-rows whose completion is a JSON object matching the plan's output schema:
+rows whose completion uses XML-delimited thought/talk fields with a JSON
+action block::
 
-    {"thought": "...", "talk": "...", "action": {"type": "...", ...}}
+    <thought>...</thought>
+    <talk>...</talk>
+    <action>{"type": "...", ...}</action>
 
 The ``thought`` field is synthesised (rule-based arithmetic by default;
 GPT-augmented when the caller requests it).  ``talk`` comes directly from
@@ -58,17 +61,17 @@ _CL_SYSTEM = (
 )
 
 _TURN_INSTRUCTION = (
-    "\n\nProduce your next negotiation turn as a JSON object with exactly three keys:\n"
-    '- "thought": your internal reasoning (point arithmetic, partner priority estimate, justification)\n'
-    '- "talk": your natural language response to your partner\n'
-    '- "action": {"type": "offer"|"counter"|"accept"|"reject", ...item allocations for yourself}'
+    "\n\nProduce your next negotiation turn using the following XML format:\n"
+    "<thought>your internal reasoning (point arithmetic, partner priority estimate, justification)</thought>\n"
+    "<talk>your natural language response to your partner</talk>\n"
+    '<action>{"type": "offer"|"counter"|"accept"|"reject", ...item allocations for yourself}</action>'
 )
 
 _CL_TURN_INSTRUCTION = (
-    "\n\nProduce your next negotiation turn as a JSON object with exactly three keys:\n"
-    '- "thought": your internal reasoning (price analysis and strategy)\n'
-    '- "talk": your natural language response to your partner\n'
-    '- "action": {"type": "propose"|"counter"|"accept"|"reject", "price": <your proposed price>}'
+    "\n\nProduce your next negotiation turn using the following XML format:\n"
+    "<thought>your internal reasoning (price analysis and strategy)</thought>\n"
+    "<talk>your natural language response to your partner</talk>\n"
+    '<action>{"type": "propose"|"counter"|"accept"|"reject", "price": <your proposed price>}</action>'
 )
 
 def _parse_quantities(

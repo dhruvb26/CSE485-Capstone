@@ -7,10 +7,8 @@ max_total: 1000
 llm_model: gpt-4o-mini
 llm_api_key_env: OPENAI_API_KEY
 
-# Max parallel OpenAI API calls
 max_concurrency: 30
 
-# Turn-only SFT: all examples teach the {thought, talk, action} JSON schema.
 datasets:
   casino:
     path: data/casino/ca.train.csv
@@ -26,9 +24,9 @@ datasets:
       - turn_cl
 
 llm_ratios:
-  turn_ca: 0.4
-  turn_dnd: 0.2
-  turn_cl: 0.2
+  turn_ca: 0.7
+  turn_dnd: 0.6
+  turn_cl: 0.6
 
 weights:
   turn_ca: 3.0

@@ -101,9 +101,11 @@ def _make_eval_completion(thought: str, answer_json: str, source: str) -> str:
 
 
 def _make_turn_completion(thought: str, talk: str, action: dict) -> str:
-    return json.dumps(
-        {"thought": thought, "talk": talk, "action": action},
-        ensure_ascii=False,
+    action_json = json.dumps(action, ensure_ascii=False)
+    return (
+        f"<thought>{thought}</thought>\n"
+        f"<talk>{talk}</talk>\n"
+        f"<action>{action_json}</action>"
     )
 
 
