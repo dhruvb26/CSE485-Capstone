@@ -303,6 +303,7 @@ def run_single_grpo(GRPO, item, max_turns: int):
     #print(f'buyer reward average: {buyer_reward_average}')
     #print(f'seller reward average: {seller_reward_average}')
     #print(metrics)
+    logger.info(str(metrics))
     #buyer_log_encoded, seller_log_encoded, buyer_log_decoded, seller_log_decoded = extract_turns_from_all_messages(tokenizer_buyer=GRPO.model1_tokenizer, tokenizer_seller=GRPO.model2_tokenizer, negotiation_log=negotiation_log["allPackagesSentOrdered"])
     buyer_queries = []
     buyer_responses = []
@@ -354,8 +355,8 @@ if __name__ == "__main__":
     #updated/session configurations !!! Need to update save_path at least
     #URGENT!
     loops_through_training_split = 2 #1 or more
-    update_every = 20 #128 is a good number
-    load_every = 1 #4 is a good numner
+    update_every = 128 #128 is a good number
+    load_every = 4 #4 is a good numner
     product_limit = 651 #len of training split is 651
     save_path = f"/scratch/bbreisc1/bbreisc1/grpo_qwen_checkpoint"
     cache_directory= f'/scratch/bbreisc1/bbreisc1/hf_cache_qwen/'
