@@ -3,26 +3,39 @@ from pathlib import Path
 
 from rl.config import TrainConfig, load_config
 from rl.evaluate import print_run_summary
-from rl.handlers import TASK_REGISTRY, CasinoDatasetHandler, DNDDatasetHandler
+from rl.handlers import (
+    TASK_REGISTRY,
+    CasinoDatasetHandler,
+    CraigslistDatasetHandler,
+    DNDDatasetHandler,
+)
 from rl.helpers import create_run_dir
 from rl.models import get_model
 
 logger = logging.getLogger(__name__)
 
+_SUFFIX_TO_DATASET = {"ca": "casino", "dnd": "dnd", "cl": "craigslist"}
+_SUFFIX_TO_AGENT = {"ca": "mturk_agent_1", "dnd": "YOU", "cl": "buyer"}
+
 
 def run(cfg: TrainConfig) -> dict:
     base_dir = cfg.data.base_dir
     n_instances = cfg.eval.n_instances
-    task_ids: list[str] = [
-        tid for tasks in cfg.eval.tasks.values() for tid in tasks
-    ]
+    task_ids: list[str] = [tid for tasks in cfg.eval.tasks.values() for tid in tasks]
 
     model = get_model(cfg)
     run_dir = create_run_dir(cfg, Path("runs"))
     logger.info("run dir: %s  model: %s", run_dir, model.model_id)
 
-    ca_handler = CasinoDatasetHandler(f"{base_dir}/{cfg.data.casino.test}")
-    dnd_handler = DNDDatasetHandler(f"{base_dir}/{cfg.data.dnd.test}")
+    handlers: dict[str, object] = {}
+    if hasattr(cfg.data, "casino") and cfg.data.casino:
+        handlers["ca"] = CasinoDatasetHandler(f"{base_dir}/{cfg.data.casino.test}")
+    if hasattr(cfg.data, "dnd") and cfg.data.dnd:
+        handlers["dnd"] = DNDDatasetHandler(f"{base_dir}/{cfg.data.dnd.test}")
+    if hasattr(cfg.data, "craigslist") and cfg.data.craigslist:
+        handlers["cl"] = CraigslistDatasetHandler(
+            f"{base_dir}/{cfg.data.craigslist.test}"
+        )
 
     all_results: dict[str, dict] = {}
 
@@ -31,12 +44,19 @@ def run(cfg: TrainConfig) -> dict:
             logger.warning("unknown task: %s", task_id)
             continue
 
+        suffix = task_id.rsplit("_", 1)[-1]
+        handler = handlers.get(suffix)
+        if handler is None:
+            logger.warning(
+                "no dataset handler for task %s (suffix=%s)", task_id, suffix
+            )
+            continue
+
+        agent = _SUFFIX_TO_AGENT.get(suffix, "mturk_agent_1")
         task = TASK_REGISTRY[task_id]()
-        dataset = ca_handler if task_id.endswith("_ca") else dnd_handler
-        agent = "mturk_agent_1" if task_id.endswith("_ca") else "YOU"
 
         result = task.evaluate(
-            dataset, model, n=n_instances, agent=agent, run_dir=run_dir
+            handler, model, n=n_instances, agent=agent, run_dir=run_dir
         )
         all_results[task_id] = result
         logger.info("%s: %.2f%%", task_id, result["accuracy"] * 100)

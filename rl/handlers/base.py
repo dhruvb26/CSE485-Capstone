@@ -46,13 +46,97 @@ class BaseTaskHandler(ABC):
         return m.group(1).strip() if m else None
 
     def extract_number(self, text: str) -> str | None:
-        """Return the first integer (including negative) found in text."""
-        m = re.search(r"-?\d+", text)
-        return m.group(0) if m else None
+        """Return the first integer (including negative) found in text.
 
+        If *text* is a ``{thought, talk, action}`` turn-schema JSON, the
+        ``thought`` field is searched as well.
+        """
+        m = re.search(r"-?\d+", text)
+        if m:
+            return m.group(0)
+        turn = self._parse_turn_json(text)
+        if turn:
+            m = re.search(r"-?\d+", turn.get("thought", ""))
+            if m:
+                return m.group(0)
+        return None
+
+    def _parse_turn_json(self, text: str) -> dict | None:
+        """If *text* is a ``{thought, talk, action}`` turn-schema JSON,
+        return the parsed dict.  Otherwise ``None``."""
+        raw = self._extract_json_raw(text)
+        if (
+            isinstance(raw, dict)
+            and "thought" in raw
+            and "action" in raw
+        ):
+            return raw
+        return None
+
+    def extract_from_turn_thought(self, text: str) -> dict:
+        """Parse structured facts out of a turn-schema ``thought`` string.
+
+        The deterministic thought format produced by turn_generators is::
+
+            My values: food=Xpts, water=Ypts, firewood=Zpts. Max possible = Npts.
+            My allocation: ... Partner priority estimate: ITEM. Decision: TYPE.
+
+        Returns a dict with any of the following keys that could be extracted:
+        ``values``, ``max_points``, ``partner_priority``, ``my_priority``,
+        ``my_low_priority``, ``decision``.
+        """
+        turn = self._parse_turn_json(text)
+        thought = turn.get("thought", "") if turn else ""
+        if not thought:
+            return {}
+
+        info: dict = {}
+
+        # Point values:  "food=5pts, water=4pts, firewood=3pts"
+        val_matches = re.findall(r"(\w+)=(\d+)pts", thought)
+        if val_matches:
+            info["values"] = {k.lower(): str(v) for k, v in val_matches}
+            pts = {k.lower(): int(v) for k, v in val_matches}
+            if pts:
+                info["my_priority"] = max(pts, key=pts.get)
+                info["my_low_priority"] = min(pts, key=pts.get)
+
+        # Max possible points
+        m = re.search(r"Max possible\s*=\s*(\d+)", thought)
+        if m:
+            info["max_points"] = int(m.group(1))
+
+        # Partner priority
+        m = re.search(r"Partner priority estimate:\s*(\w+)", thought)
+        if m and m.group(1).lower() != "unknown":
+            info["partner_priority"] = m.group(1).lower()
+
+        # Decision / action type
+        m = re.search(r"Decision:\s*(\w+)", thought)
+        if m:
+            info["decision"] = m.group(1).lower()
+
+        return info
+    
     def extract_json(self, text: str) -> dict | None:
-        """Try to parse a JSON object from text; checks <answer> tags first."""
-        # 1. inside <answer> tags (preferred)
+        """Try to parse a JSON object from text.
+
+        Strategy:
+        1. Content inside ``<answer>…</answer>`` tags
+        2. Whole text as JSON
+        3. First ``{…}`` block
+        4. If the result is a turn-schema, return the ``action`` dict
+        """
+        raw = self._extract_json_raw(text)
+        if raw is None:
+            return None
+        if isinstance(raw, dict) and "thought" in raw and "action" in raw:
+            action = raw.get("action")
+            return action if isinstance(action, dict) else raw
+        return raw
+
+    def _extract_json_raw(self, text: str) -> dict | None:
+        """Inner helper: parse JSON from text without unwrapping."""
         tagged = self.extract_answer_tag(text)
         if tagged:
             try:
@@ -60,13 +144,11 @@ class BaseTaskHandler(ABC):
             except Exception:
                 pass
 
-        # 2. whole text
         try:
             return json.loads(text.strip())
         except Exception:
             pass
 
-        # 3. first {...} block
         m = re.search(r"\{.*\}", text, re.DOTALL)
         if m:
             try:
@@ -129,6 +211,7 @@ class BaseTaskHandler(ABC):
             outputs_dict[prompt] = model.generate(prompt)
 
         final_prompts: list[str] = []
+        final_raw_responses: list[str] = []
         final_preds_log: list = []
         final_gts_log: list = []
         scores: list[float] = []
@@ -139,6 +222,7 @@ class BaseTaskHandler(ABC):
             if prediction is not None:
                 scores.append(self.score(prediction, gt))
                 final_prompts.append(prompt)
+                final_raw_responses.append(raw)
                 final_preds_log.append(self.log_prediction(prediction))
                 final_gts_log.append(self.log_ground_truth(gt))
 
@@ -155,12 +239,14 @@ class BaseTaskHandler(ABC):
             "stats": stats,
             "ground truth": final_gts_log,
             "predictions": final_preds_log,
+            "raw_responses": final_raw_responses,
             "prompts": final_prompts,
             "outputs_dict": outputs_dict,
         }
 
         if run_dir is not None:
-            dataset = "ca" if self.task_id.endswith("_ca") else "dnd"
+            suffix = self.task_id.rsplit("_", 1)[-1]
+            dataset = {"ca": "ca", "dnd": "dnd", "cl": "cl"}.get(suffix, suffix)
             task_log_dir = run_dir / dataset / self.task_id
             task_log_dir.mkdir(parents=True, exist_ok=True)
             model_id = getattr(model, "model_id", "model")

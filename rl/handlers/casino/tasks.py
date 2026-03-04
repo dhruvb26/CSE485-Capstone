@@ -99,12 +99,15 @@ class MaxPointsCA(BaseTaskHandler):
 
     def parse_output(self, text: str) -> dict[str, int] | None:
         data = self.extract_json(text)
-        if not data or self._key not in data:
-            return None
-        try:
-            return {self._key: int(data[self._key])}
-        except (TypeError, ValueError):
-            return None
+        if data and self._key in data:
+            try:
+                return {self._key: int(data[self._key])}
+            except (TypeError, ValueError):
+                pass
+        info = self.extract_from_turn_thought(text)
+        if self._key in info:
+            return {self._key: info[self._key]}
+        return None
 
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
@@ -139,10 +142,18 @@ class PointValuesCA(BaseTaskHandler):
         return {k: str(v) for k, v in agent_points(instance, agent).items()}
 
     def parse_output(self, text: str) -> dict[str, str] | None:
+        # Prefer thought extraction: action dicts share food/water/firewood keys
+        # but carry allocation counts, not per-package point values.
+        info = self.extract_from_turn_thought(text)
+        if "values" in info:
+            return info["values"]
         data = self.extract_json(text)
-        if data is None:
-            return None
-        return {k.lower(): str(v) for k, v in data.items() if k.lower() in self._keys}
+        if data is not None:
+            if "type" not in data:
+                matched = {k.lower(): str(v) for k, v in data.items() if k.lower() in self._keys}
+                if matched:
+                    return matched
+        return None
 
     def score(self, prediction: dict, truth: dict) -> float:
         if not isinstance(prediction, dict):
@@ -182,11 +193,14 @@ class HighPriorityCA(BaseTaskHandler):
 
     def parse_output(self, text: str) -> dict[str, str] | None:
         data = self.extract_json(text)
-        if not data or self._key not in data:
-            return None
-        raw = data[self._key]
-        item = str(raw).lower().strip() if raw is not None else None
-        return {self._key: item} if item in self._options else None
+        if data and self._key in data:
+            item = str(data[self._key]).lower().strip()
+            if item in self._options:
+                return {self._key: item}
+        info = self.extract_from_turn_thought(text)
+        if "my_priority" in info and info["my_priority"] in self._options:
+            return {self._key: info["my_priority"]}
+        return None
 
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
@@ -224,11 +238,14 @@ class LowPriorityCA(BaseTaskHandler):
 
     def parse_output(self, text: str) -> dict[str, str] | None:
         data = self.extract_json(text)
-        if not data or self._key not in data:
-            return None
-        raw = data[self._key]
-        item = str(raw).lower().strip() if raw is not None else None
-        return {self._key: item} if item in self._options else None
+        if data and self._key in data:
+            item = str(data[self._key]).lower().strip()
+            if item in self._options:
+                return {self._key: item}
+        info = self.extract_from_turn_thought(text)
+        if "my_low_priority" in info and info["my_low_priority"] in self._options:
+            return {self._key: info["my_low_priority"]}
+        return None
 
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
@@ -380,6 +397,7 @@ class StrategyCA(BaseTaskHandler):
             outputs_dict[prompt] = model.generate(prompt)
 
         final_prompts: list[str] = []
+        final_raw_responses: list[str] = []
         final_preds_raw: list[frozenset] = []
         final_gts_raw: list[frozenset] = []
         final_preds_log: list = []
@@ -391,6 +409,7 @@ class StrategyCA(BaseTaskHandler):
             prediction = self.parse_output(raw)
             if prediction is not None:
                 final_prompts.append(prompt)
+                final_raw_responses.append(raw)
                 final_preds_raw.append(prediction)
                 final_gts_raw.append(gt)
                 exact_scores.append(self.score(prediction, gt))
@@ -412,6 +431,7 @@ class StrategyCA(BaseTaskHandler):
             "stats": stats,
             "ground truth": final_gts_log,
             "predictions": final_preds_log,
+            "raw_responses": final_raw_responses,
             "prompts": final_prompts,
             "outputs_dict": outputs_dict,
         }
@@ -455,11 +475,14 @@ class MidHighPriorityCA(BaseTaskHandler):
 
     def parse_output(self, text: str) -> dict[str, str] | None:
         data = self.extract_json(text)
-        if not data or self._key not in data:
-            return None
-        raw = data[self._key]
-        item = str(raw).lower().strip() if raw is not None else None
-        return {self._key: item} if item in self._options else None
+        if data and self._key in data:
+            item = str(data[self._key]).lower().strip()
+            if item in self._options:
+                return {self._key: item}
+        info = self.extract_from_turn_thought(text)
+        if "my_priority" in info and info["my_priority"] in self._options:
+            return {self._key: info["my_priority"]}
+        return None
 
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
@@ -497,11 +520,14 @@ class MidLowPriorityCA(BaseTaskHandler):
 
     def parse_output(self, text: str) -> dict[str, str] | None:
         data = self.extract_json(text)
-        if not data or self._key not in data:
-            return None
-        raw = data[self._key]
-        item = str(raw).lower().strip() if raw is not None else None
-        return {self._key: item} if item in self._options else None
+        if data and self._key in data:
+            item = str(data[self._key]).lower().strip()
+            if item in self._options:
+                return {self._key: item}
+        info = self.extract_from_turn_thought(text)
+        if "my_low_priority" in info and info["my_low_priority"] in self._options:
+            return {self._key: info["my_low_priority"]}
+        return None
 
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
@@ -542,11 +568,14 @@ class MidPartnerHighPriorityCA(BaseTaskHandler):
 
     def parse_output(self, text: str) -> dict[str, str] | None:
         data = self.extract_json(text)
-        if not data or self._key not in data:
-            return None
-        raw = data[self._key]
-        item = str(raw).lower().strip() if raw is not None else None
-        return {self._key: item} if item in self._options else None
+        if data and self._key in data:
+            item = str(data[self._key]).lower().strip()
+            if item in self._options:
+                return {self._key: item}
+        info = self.extract_from_turn_thought(text)
+        if "partner_priority" in info and info["partner_priority"] in self._options:
+            return {self._key: info["partner_priority"]}
+        return None
 
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
@@ -585,11 +614,12 @@ class MidPartnerLowPriorityCA(BaseTaskHandler):
 
     def parse_output(self, text: str) -> dict[str, str] | None:
         data = self.extract_json(text)
-        if not data or self._key not in data:
-            return None
-        raw = data[self._key]
-        item = str(raw).lower().strip() if raw is not None else None
-        return {self._key: item} if item in self._options else None
+        if data and self._key in data:
+            item = str(data[self._key]).lower().strip()
+            if item in self._options:
+                return {self._key: item}
+        # No direct "partner low priority" in turn thoughts, so no fallback
+        return None
 
     def score(self, prediction: dict | None, truth: dict) -> float:
         return 1.0 if prediction and prediction.get(self._key) == truth.get(self._key) else 0.0
