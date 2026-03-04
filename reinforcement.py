@@ -25,7 +25,7 @@ console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(formatter)
 
 logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+#logger.addHandler(console_handler)
 
 discord = 'https://discord.com/api/webhooks/708632318599888957/Uo3X8GPac_g3mRGPzrGHvl0805p4AWUu9ZotQAIUydxF7E58cTkPgsHhjGJobknIeOXv'
 
@@ -146,17 +146,18 @@ def extract_input_output_tadvanatge_list(tokenizer, negotiation_log, reward_metr
     responses = []
     advantages = []
     reward = reward_metric["NPb"]
-    advantage = reward - reward_average
     start = 0
     if seller:
         start = 1
+        reward = reward_metric["NPs"]
+    advantage = reward - reward_average
     for i in range(start, len(negotiation_log), 2):
         input_tokens, temp = chat_http_package_to_model_input(tokenizer=tokenizer, http_package=negotiation_log[i][0])
         output_tokens, temp = chat_http_package_from_model_output(tokenizer=tokenizer, http_package=negotiation_log[i][1])
         queries.append(input_tokens)
         responses.append(output_tokens)
         advantages.append(advantage)
-
+    logger.info(f'Advantages: {advantages}')
     return queries, responses, advantages
 
 
@@ -299,7 +300,9 @@ def run_single_grpo(GRPO, item, max_turns: int):
         buyer_reward_sum += m['NPb']
     buyer_reward_average = buyer_reward_sum / 8
     seller_reward_average = seller_reward_sum / 8
-    print(metrics)
+    #print(f'buyer reward average: {buyer_reward_average}')
+    #print(f'seller reward average: {seller_reward_average}')
+    #print(metrics)
     #buyer_log_encoded, seller_log_encoded, buyer_log_decoded, seller_log_decoded = extract_turns_from_all_messages(tokenizer_buyer=GRPO.model1_tokenizer, tokenizer_seller=GRPO.model2_tokenizer, negotiation_log=negotiation_log["allPackagesSentOrdered"])
     buyer_queries = []
     buyer_responses = []
@@ -351,8 +354,8 @@ if __name__ == "__main__":
     #updated/session configurations !!! Need to update save_path at least
     #URGENT!
     loops_through_training_split = 2 #1 or more
-    update_every = 128
-    load_every = 4
+    update_every = 20 #128 is a good number
+    load_every = 1 #4 is a good numner
     product_limit = 651 #len of training split is 651
     save_path = f"/scratch/bbreisc1/bbreisc1/grpo_qwen_checkpoint"
     cache_directory= f'/scratch/bbreisc1/bbreisc1/hf_cache_qwen/'
@@ -383,7 +386,7 @@ if __name__ == "__main__":
         for j in range(loops_through_training_split):
             send_discord_webhook(discord, f'Starting Training Split Loop #{j}')
             for i in range(product_limit):
-                send_discord_webhook(discord, f'Starting Product #{i}')
+                #send_discord_webhook(discord, f'Starting Product #{i}')
                 start_one_session = time.time()
                 start_one_updated = time.time()
 
@@ -459,13 +462,13 @@ if __name__ == "__main__":
                     to_load_from_path = f'{save_path}{update_count}'
                     free_models(model, ref_model, optimizer)
 
-                    send_discord_webhook(discord, f'New checkpoint saved #{update_count}, includes #{pair_count} learning points')
+                    #send_discord_webhook(discord, f'New checkpoint saved #{update_count}, includes #{pair_count} learning points')
 
                     if update_count % load_every == 0:
                         current_weights_path = f'{save_path}{update_count}'
                         logger.info(f'Loading updated weights into vLLM!')
                         vllm_update_count += 1
-                        send_discord_webhook(discord, f'Attempting to Updae vLLM Server Weights: Weight Updated #{vllm_update_count}')
+                        #send_discord_webhook(discord, f'Attempting to Updae vLLM Server Weights: Weight Updated #{vllm_update_count}')
 
                     time.sleep(2)
                     logger.info(f"GPU memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GiB")
@@ -473,14 +476,15 @@ if __name__ == "__main__":
                     proc = start_vllm_wait(model_path=current_weights_path, cache_dir=cache_directory)
                     #log vllm server restarted
                     logger.info(f'Updated checkpoint vLLM server started, PID: {proc.pid}')
+                    #time.sleep(140)
                     end_one_updated = time.time()
                     #Log time for one update
-                    print("Execution time, one update:", end_one_updated - start_one_updated, "seconds")
+                    #print("Execution time, one update:", end_one_updated - start_one_updated, "seconds")
                     logger.info("Execution time, one update: %.4fseconds", end_one_updated - start_one_updated)
 
                 #Log time for one session (One Item)
                 end_one_session = time.time()
-                print("Execution time, one session:", end_one_session - start_one_session, "seconds")
+                #print("Execution time, one session:", end_one_session - start_one_session, "seconds")
                 logger.info("Execution time, one update: %.4fseconds", end_one_session - start_one_session)
     finally:
         stop_vllm(proc)

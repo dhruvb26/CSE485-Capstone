@@ -393,6 +393,7 @@ def start_vllm_wait(model_path, port=8000, cache_dir=None, user='bbreisc1', time
 
     cmd = [
         "python", "-m", "vllm.entrypoints.openai.api_server",
+        "--served-model-name", "Qwen/Qwen2.5-7B-Instruct",
         "--model", env["VLLM_MODEL"],
         "--port", env["VLLM_PORT"],
         "--dtype", "float16",

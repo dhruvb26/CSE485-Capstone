@@ -70,24 +70,24 @@ def run_dialog(
         "turns": 0,
     }
 
-    log_print("=" * 80)
-    log_print(f"Starting negotiation for {code} (B=${B:.2f}, C=${C:.2f})")
-    log_print("=" * 80)
+    #log_print("=" * 80)
+    #log_print(f"Starting negotiation for {code} (B=${B:.2f}, C=${C:.2f})")
+    #log_print("=" * 80)
 
     # Main negotiation loop
     for t in range(1, max_turns + 1):
         # Buyer turn
-        log_print(f"\n--- Turn {t} (Buyer) ---")
+        #log_print(f"\n--- Turn {t} (Buyer) ---")
         b_out = buyer.chat(temperature=temperature, top_p=top_p, all_negotiation_log=negotiation_log["allPackagesSentOrdered"])
         b_act, b_price = extract_action_and_price(b_out)
         outcome["turns"] = t * 2 - 1
 
-        log_print(f"\033[1mBUYER\033[0m\n{b_out}\n\n")
-        log_print(
-            f"\033[1mACTION\033[0m: {b_act}, \033[1mPRICE\033[0m: ${b_price:.2f}"
-            if b_price
-            else f"\033[1mACTION\033[0m: {b_act}"
-        )
+        #log_print(f"\033[1mBUYER\033[0m\n{b_out}\n\n")
+        #log_print(
+        #    f"\033[1mACTION\033[0m: {b_act}, \033[1mPRICE\033[0m: ${b_price:.2f}"
+        #    if b_price
+        #    else f"\033[1mACTION\033[0m: {b_act}"
+        #)
 
         # Check buyer action validity
         if b_act == "QUIT":
@@ -118,18 +118,18 @@ def run_dialog(
             break
 
         # Seller turn
-        log_print(f"\n--- Turn {t} (Seller) ---")
+        #log_print(f"\n--- Turn {t} (Seller) ---")
         seller.receive_message(b_out)
         s_out = seller.chat(temperature=temperature, top_p=top_p, all_negotiation_log=negotiation_log["allPackagesSentOrdered"] )
         s_act, s_price = extract_action_and_price(s_out)
         outcome["turns"] = t * 2
 
-        log_print(f"\033[1mSELLER\033[0m\n\n{s_out}\n\n")
-        log_print(
-            f"\033[1mACTION\033[0m: {s_act}, \033[1mPRICE\033[0m: ${s_price:.2f}"
-            if s_price
-            else f"\033[1mACTION\033[0m: {s_act}"
-        )
+        #log_print(f"\033[1mSELLER\033[0m\n\n{s_out}\n\n")
+        #log_print(
+        #    f"\033[1mACTION\033[0m: {s_act}, \033[1mPRICE\033[0m: ${s_price:.2f}"
+        #    if s_price
+        #    else f"\033[1mACTION\033[0m: {s_act}"
+        #)
 
         # Check seller action validity
         if s_act == "QUIT":
@@ -175,7 +175,8 @@ def run_dialog(
             outcome["price"] = None
 
     # Log final outcome
-    log_print("\n" + "=" * 80)
+    #log_print("\n" + "=" * 80)
+    '''
     if outcome["deal"]:
         log_print(
             f"✓ DEAL REACHED at ${outcome['price']:.2f} (turns: {outcome['turns']})"
@@ -187,7 +188,7 @@ def run_dialog(
     else:
         log_print(f"✗ No deal reached (turns: {outcome['turns']})")
     log_print("=" * 80 + "\n")
-
+    '''
     return (outcome, negotiation_log)
 
 
