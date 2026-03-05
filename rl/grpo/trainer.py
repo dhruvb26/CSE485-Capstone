@@ -228,7 +228,7 @@ def _policy_gradient_step(
 
         full_text = prompt + candidate
         inputs = tokenizer(
-            full_text, return_tensors="pt", truncation=True, max_length=2048
+            full_text, return_tensors="pt", truncation=True, max_length=1024
         )
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
@@ -294,8 +294,7 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig, run_timestamp: st
     episodes_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Run directory: %s", run_dir.resolve())
 
-    # n_episodes = grpo_cfg.training.epochs * 1000
-    n_episodes = 10 # for testing
+    n_episodes = grpo_cfg.training.epochs * 1000
     max_new_tokens = 512
 
     n_gpus = torch.cuda.device_count()
