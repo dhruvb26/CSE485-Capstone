@@ -6,17 +6,17 @@ grpo:
   terminal_lambda: 0.4
   walkaway_penalty: -0.2
   base_model: unsloth/mistral-7b-instruct-v0.3
-  sft_adapter_path: checkpoints/sft-mid/adapter
+  sft_adapter_path: checkpoints/sft-tuned/adapter
   out_dir: checkpoints/grpo
   seed: 42
   lora:
-    rank: 32
-    alpha: 16
+    rank: 64
+    alpha: 32
     dropout: 0.05
   training:
     max_seq_length: 2048
     load_in_4bit: true
-    lr: 0.00005
+    lr: 0.00001
     epochs: 1
     batch_size: 1
     grad_accum: 8

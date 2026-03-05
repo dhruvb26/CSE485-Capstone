@@ -10,7 +10,7 @@ model_name: unsloth/mistral-7b-instruct-v0.3
 # Path to an existing LoRA adapter to resume training from. Set to null for a fresh LoRA.
 # When set, model_name must be the matching base model used when that adapter was created.
 adapter_path: null
-out_dir: checkpoints/sft-mid
+out_dir: checkpoints/sft-tuned
 seed: 42
 
 # Lower rank is sufficient for format-only SFT; bump to 64 for the full mid_* training run.
