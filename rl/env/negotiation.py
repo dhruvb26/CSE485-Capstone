@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 
 from rl.env.actions import Action, ActionType
 from rl.env.personas import Persona
 from rl.env.scenario import ITEMS, Scenario
-from rl.verifiers.format import parse_xml_turn
+from rl.verifiers.format import TALK_RE, parse_xml_turn
 
 _MAX_TALK_LEN = 200
-_TALK_RE = re.compile(r"<talk>(.*?)</talk>", re.DOTALL | re.IGNORECASE)
 
 
 @dataclass
@@ -41,8 +39,8 @@ class NegotiationEnv:
     history: list[Turn] = field(default_factory=list)
     _done: bool = False
     _deal_reached: bool = False
-    _agent_deal_action: Action | None = None
-    _partner_deal_action: Action | None = None
+    _accepted_offer: Action | None = None
+    _offerer: str | None = None
 
     @property
     def is_done(self) -> bool:
@@ -67,8 +65,8 @@ class NegotiationEnv:
         self.history = []
         self._done = False
         self._deal_reached = False
-        self._agent_deal_action = None
-        self._partner_deal_action = None
+        self._accepted_offer = None
+        self._offerer = None
 
     def step(self, raw_output: str) -> Turn:
         """Process one agent turn. Returns the recorded Turn.
@@ -114,8 +112,8 @@ class NegotiationEnv:
                 return turn
             self._done = True
             self._deal_reached = True
-            self._agent_deal_action = prev.action
-            self._partner_deal_action = prev.action
+            self._accepted_offer = prev.action
+            self._offerer = prev.agent
             return turn
 
         if action is not None and action.type == ActionType.REJECT:
@@ -129,26 +127,37 @@ class NegotiationEnv:
 
     def agent_points(self) -> int:
         """Points the learner gets if the current deal is accepted."""
-        if not self._deal_reached or self._agent_deal_action is None:
+        if not self._deal_reached or self._accepted_offer is None:
             return 0
-        return sum(
-            self._agent_deal_action.allocations.get(item, 0)
-            * self.scenario.agent_values[item]
-            for item in ITEMS
-        )
+        if self._offerer == "learner":
+            return sum(
+                self._accepted_offer.allocations.get(item, 0)
+                * self.scenario.agent_values[item]
+                for item in ITEMS
+            )
+        else:
+            return sum(
+                (self.scenario.items[item] - self._accepted_offer.allocations.get(item, 0))
+                * self.scenario.agent_values[item]
+                for item in ITEMS
+            )
 
     def partner_points(self) -> int:
         """Points the clone gets from the deal."""
-        if not self._deal_reached or self._agent_deal_action is None:
+        if not self._deal_reached or self._accepted_offer is None:
             return 0
-        return sum(
-            (
-                self.scenario.items[item]
-                - self._agent_deal_action.allocations.get(item, 0)
+        if self._offerer == "clone":
+            return sum(
+                self._accepted_offer.allocations.get(item, 0)
+                * self.scenario.partner_values[item]
+                for item in ITEMS
             )
-            * self.scenario.partner_values[item]
-            for item in ITEMS
-        )
+        else:
+            return sum(
+                (self.scenario.items[item] - self._accepted_offer.allocations.get(item, 0))
+                * self.scenario.partner_values[item]
+                for item in ITEMS
+            )
 
     def build_learner_prompt(self) -> str:
         """Build the prompt for the learner's next turn.
@@ -255,7 +264,7 @@ def _parse_agent_output(
     """
     parsed = parse_xml_turn(raw)
     if parsed is None:
-        talk_m = _TALK_RE.search(raw)
+        talk_m = TALK_RE.search(raw)
         if talk_m:
             talk = talk_m.group(1).strip()[:_MAX_TALK_LEN]
         else:

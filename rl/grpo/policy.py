@@ -68,6 +68,19 @@ def compute_grpo_advantages(scores: list[float]) -> list[float]:
     return [(s - mean) / std for s in scores]
 
 
+def _compute_prompt_len(tokenizer, prompt: str, full_text: str, max_length: int) -> int:
+    """Return the number of tokens in the full_text encoding that belong to the prompt."""
+    prompt_ids = tokenizer(prompt, truncation=True, max_length=max_length, return_tensors=None)["input_ids"]
+    full_ids = tokenizer(full_text, truncation=True, max_length=max_length, return_tensors=None)["input_ids"]
+    prompt_len = 0
+    for i, (p, f) in enumerate(zip(prompt_ids, full_ids)):
+        if p == f:
+            prompt_len = i + 1
+        else:
+            break
+    return min(prompt_len, len(full_ids) - 1)
+
+
 def _clip_and_step(
     model: PreTrainedModel, optimizer: torch.optim.Optimizer, label: str = ""
 ) -> None:
@@ -164,16 +177,13 @@ def policy_gradient_step(
     if not accumulate_only:
         optimizer.zero_grad()
 
-    prompt_ids = tokenizer(
-        prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN
-    )
-    prompt_len = prompt_ids["input_ids"].shape[1]
-
     for candidate, advantage in zip(candidates, advantages):
         if abs(advantage) < 1e-8:
             continue
 
         full_text = prompt + candidate
+        prompt_len = _compute_prompt_len(tokenizer, prompt, full_text, MAX_SEQ_LEN)
+
         inputs = tokenizer(
             full_text, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN
         )
@@ -231,12 +241,9 @@ def episode_reinforce_step(
         prompt = turn_record["prompt"]
         response = turn_record["best_response"]
 
-        prompt_ids = tokenizer(
-            prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN
-        )
-        prompt_len = prompt_ids["input_ids"].shape[1]
-
         full_text = prompt + response
+        prompt_len = _compute_prompt_len(tokenizer, prompt, full_text, MAX_SEQ_LEN)
+
         inputs = tokenizer(
             full_text, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN
         )

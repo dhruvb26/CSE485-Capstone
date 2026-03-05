@@ -14,6 +14,7 @@ class ActionType(str, Enum):
     COUNTER = "counter"
     ACCEPT = "accept"
     REJECT = "reject"
+    PROPOSE = "propose"
 
 
 @dataclass(frozen=True)

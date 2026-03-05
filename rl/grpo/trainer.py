@@ -109,8 +109,7 @@ def grpo_train(
         ref_device_map: dict | str = {"": 1}
         logger.info("Multi-GPU: learner → cuda:0, clone+ref → cuda:1")
     else:
-        logger.error("At least 2 GPUs are required for training. Exiting...")
-        exit(1)
+        raise SystemExit("At least 2 GPUs are required for training.")
 
     logger.info("Loading learner model...")
     learner_model, tokenizer = load_model_and_tokenizer(
@@ -367,14 +366,16 @@ def grpo_train(
         ep_elapsed = time.time() - ep_start
 
         baseline = avg_reward if recent_rewards else 0.0
+        scaled_ep_reward = ep_reward * grpo_cfg.episode_weight
+        scaled_baseline = baseline * grpo_cfg.episode_weight
         episode_reinforce_step(
             learner_model,
             ref_model,
             tokenizer,
             optimizer,
             ep_turns,
-            ep_reward,
-            baseline,
+            scaled_ep_reward,
+            scaled_baseline,
             grpo_cfg.kl_coeff,
             accumulate_only=True,
         )

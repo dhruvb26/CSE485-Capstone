@@ -71,7 +71,7 @@ def load_checkpoint(
         logger.warning("No %s found in %s — starting fresh", CKPT_FILENAME, ckpt_dir)
         return 0, deque(maxlen=rolling_window), deque(maxlen=rolling_window)
 
-    state = torch.load(state_path, weights_only=False)
+    state = torch.load(state_path, weights_only=True)
     optimizer.load_state_dict(state["optimizer_state_dict"])
     rng.setstate(state["rng_state"])
     torch.random.set_rng_state(state["torch_rng_state"])

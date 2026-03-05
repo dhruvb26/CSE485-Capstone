@@ -35,11 +35,6 @@ class Scenario:
         return sum(self.items[k] * self.partner_values[k] for k in ITEMS)
 
     @property
-    def max_joint_points(self) -> int:
-        """Upper bound on combined points if both agents received all items."""
-        return self.agent_max_points + self.partner_max_points
-
-    @property
     def is_competitive(self) -> bool:
         """True when both agents place highest value on the same item.
 
