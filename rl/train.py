@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import torch
@@ -13,6 +14,41 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from rl.config import SFTTrainConfig, load_train_config
 
 logger = logging.getLogger(__name__)
+
+LOG_DIR = Path("logs")
+RUNS_DIR = Path("runs")
+
+
+def setup_logging() -> str:
+    """Configure root logger to write to both stderr and a timestamped log file.
+
+    Returns the timestamp string so callers can reuse it for the run directory.
+    """
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = LOG_DIR / f"sft_train_{timestamp}.log"
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    fmt = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    console.setFormatter(fmt)
+    root.addHandler(console)
+
+    fh = logging.FileHandler(log_file, mode="a")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(fmt)
+    root.addHandler(fh)
+
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("transformers").setLevel(logging.WARNING)
+    logging.getLogger("accelerate").setLevel(logging.WARNING)
+
+    logging.getLogger(__name__).info("Logging to %s", log_file.resolve())
+    return timestamp
 
 
 def load_jsonl(path: str | Path, tasks: list[str] | None = None) -> list[dict]:
@@ -53,8 +89,13 @@ def tokenise_dataset(rows: list[dict], tokenizer, max_seq_length: int):
     return Dataset.from_list([_tokenise(r) for r in rows])
 
 
-def train(cfg: SFTTrainConfig) -> None:
+def train(cfg: SFTTrainConfig, run_timestamp: str | None = None) -> None:
     t = cfg.training
+
+    timestamp = run_timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = RUNS_DIR / f"sft_train_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Run directory: %s", run_dir.resolve())
     
     # Configure quantization if needed
     quantization_config = None
@@ -133,6 +174,35 @@ def train(cfg: SFTTrainConfig) -> None:
         raise ValueError(f"No examples loaded from {cfg.data} (tasks={cfg.tasks})")
     logger.info("Training on %d examples", len(rows))
 
+    # Save run metadata and the raw training examples used.
+    with (run_dir / "run_meta.json").open("w") as f:
+        json.dump(
+            {
+                "timestamp": timestamp,
+                "model_name": cfg.model_name,
+                "adapter_path": cfg.adapter_path,
+                "data": str(cfg.data),
+                "tasks": cfg.tasks,
+                "n_examples": len(rows),
+                "lora": {"rank": cfg.lora.rank, "alpha": cfg.lora.alpha, "dropout": cfg.lora.dropout},
+                "training": {
+                    "epochs": t.epochs,
+                    "lr": t.lr,
+                    "batch_size": t.batch_size,
+                    "grad_accum": t.grad_accum,
+                    "max_seq_length": t.max_seq_length,
+                },
+            },
+            f,
+            indent=2,
+        )
+
+    training_data_path = run_dir / "training_data.jsonl"
+    with training_data_path.open("w") as f:
+        for row in rows:
+            f.write(json.dumps(row) + "\n")
+    logger.info("Saved %d training examples to %s", len(rows), training_data_path)
+
     dataset = tokenise_dataset(rows, tokenizer, t.max_seq_length)
 
     out_dir = Path(cfg.out_dir)
@@ -191,7 +261,5 @@ def train(cfg: SFTTrainConfig) -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s"
-    )
-    train(load_train_config(Path("rl/train.config.yaml")))
+    _timestamp = setup_logging()
+    train(load_train_config(Path("rl/train.config.yaml")), run_timestamp=_timestamp)

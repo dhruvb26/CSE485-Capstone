@@ -37,10 +37,14 @@ from rl.rewards.composite import CompositeReward
 logger = logging.getLogger(__name__)
 
 LOG_DIR = Path("logs")
+RUNS_DIR = Path("runs")
 
 
-def setup_logging() -> None:
-    """Configure root logger to write to both stderr and a timestamped log file."""
+def setup_logging() -> str:
+    """Configure root logger to write to both stderr and a timestamped log file.
+
+    Returns the timestamp string so callers can reuse it for the run directory.
+    """
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = LOG_DIR / f"grpo_train_{timestamp}.log"
@@ -65,6 +69,7 @@ def setup_logging() -> None:
     logging.getLogger("accelerate").setLevel(logging.WARNING)
 
     logger.info("Logging to %s", log_file.resolve())
+    return timestamp
 
 
 def _device_map_is_cpu(device_map) -> bool:
@@ -278,10 +283,16 @@ def _sync_clone(learner_model, clone_model) -> None:
     logger.info("Synced clone weights from learner")
 
 
-def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig) -> None:
+def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig, run_timestamp: str | None = None) -> None:
     """Main GRPO training loop."""
     rng = random.Random(grpo_cfg.seed)
     torch.manual_seed(grpo_cfg.seed)
+
+    timestamp = run_timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = RUNS_DIR / f"grpo_train_{timestamp}"
+    episodes_dir = run_dir / "episodes"
+    episodes_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Run directory: %s", run_dir.resolve())
 
     # n_episodes = grpo_cfg.training.epochs * 1000
     n_episodes = 10 # for testing
@@ -333,6 +344,30 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig) -> None:
     recent_deals: deque[bool] = deque(maxlen=ROLLING_WINDOW)
     train_start = time.time()
 
+    with (run_dir / "run_meta.json").open("w") as _f:
+        json.dump(
+            {
+                "timestamp": timestamp,
+                "base_model": grpo_cfg.base_model,
+                "sft_adapter_path": grpo_cfg.sft_adapter_path,
+                "n_episodes": n_episodes,
+                "candidates_per_turn": grpo_cfg.candidates_per_turn,
+                "max_turns": grpo_cfg.max_turns,
+                "kl_coeff": grpo_cfg.kl_coeff,
+                "seed": grpo_cfg.seed,
+                "lora": {"rank": grpo_cfg.lora.rank, "alpha": grpo_cfg.lora.alpha, "dropout": grpo_cfg.lora.dropout},
+                "reward": {
+                    "terminal_weight": reward_cfg.terminal_weight,
+                    "format_weight": reward_cfg.format_weight,
+                    "arithmetic_weight": reward_cfg.arithmetic_weight,
+                    "strategy_weight": reward_cfg.strategy_weight,
+                    "partner_model_weight": reward_cfg.partner_model_weight,
+                },
+            },
+            _f,
+            indent=2,
+        )
+
     for episode in range(n_episodes):
         ep_start = time.time()
         scenario = sample_scenario(rng)
@@ -351,6 +386,7 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig) -> None:
 
         episode_rewards = []
         learner_turn_idx = 0
+        ep_turns: list[dict] = []
 
         while not env.is_done:
             if env.is_learner_turn:
@@ -394,6 +430,17 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig) -> None:
                     candidates[best_idx][:300].replace("\n", "\\n"),
                 )
 
+                ep_turns.append({
+                    "turn": env.current_turn,
+                    "agent": "learner",
+                    "prompt": prompt,
+                    "candidates": candidates,
+                    "scores": turn_scores,
+                    "advantages": advantages,
+                    "best_idx": best_idx,
+                    "best_response": candidates[best_idx],
+                })
+
                 _policy_gradient_step(
                     learner_model, clone_model, tokenizer, optimizer,
                     prompt, candidates, advantages,
@@ -413,6 +460,12 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig) -> None:
                     "  clone turn (first 300 chars): %s",
                     clone_output[:300].replace("\n", "\\n"),
                 )
+                ep_turns.append({
+                    "turn": env.current_turn,
+                    "agent": "clone",
+                    "prompt": clone_prompt,
+                    "response": clone_output,
+                })
                 env.step(clone_output)
 
         ep_reward = reward.score_episode(env, episode)
@@ -422,6 +475,20 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig) -> None:
         recent_deals.append(bool(env.deal_reached))
         avg_reward = sum(recent_rewards) / len(recent_rewards)
         deal_rate = sum(recent_deals) / len(recent_deals)
+
+        ep_file = episodes_dir / f"ep_{episode:04d}.jsonl"
+        with ep_file.open("w") as _ef:
+            for turn_record in ep_turns:
+                _ef.write(json.dumps(turn_record) + "\n")
+            _ef.write(json.dumps({
+                "episode_summary": True,
+                "episode": episode,
+                "persona": persona.name,
+                "deal": bool(env.deal_reached),
+                "turns": env.current_turn,
+                "reward": ep_reward,
+                "elapsed_s": round(ep_elapsed, 2),
+            }) + "\n")
 
         with log_path.open("a") as f:
             f.write(json.dumps({
@@ -472,6 +539,6 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig) -> None:
 
 
 if __name__ == "__main__":
-    setup_logging()
+    _timestamp = setup_logging()
     grpo_cfg, reward_cfg = load_grpo_config(Path("rl/grpo.config.yaml"))
-    grpo_train(grpo_cfg, reward_cfg)
+    grpo_train(grpo_cfg, reward_cfg, run_timestamp=_timestamp)
