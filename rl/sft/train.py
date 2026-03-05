@@ -262,4 +262,4 @@ def train(cfg: SFTTrainConfig, run_timestamp: str | None = None) -> None:
 
 if __name__ == "__main__":
     _timestamp = setup_logging()
-    train(load_train_config(Path("rl/train.config.yaml")), run_timestamp=_timestamp)
+    train(load_train_config(Path("rl/configs/sft_train.yaml")), run_timestamp=_timestamp)

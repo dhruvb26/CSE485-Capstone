@@ -250,5 +250,5 @@ def generate(cfg: SFTConfig) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
-    cfg = load_config(Path("rl/sft.config.yaml"))
+    cfg = load_config(Path("rl/configs/sft_generate.yaml"))
     generate(cfg)

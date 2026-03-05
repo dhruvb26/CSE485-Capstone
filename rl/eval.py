@@ -67,7 +67,7 @@ def run(cfg: TrainConfig) -> dict:
 
 
 if __name__ == "__main__":
-    cfg = load_config(Path("rl/config.yaml"))
+    cfg = load_config(Path("rl/configs/eval.yaml"))
     logging.basicConfig(
         level=cfg.logging.level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
