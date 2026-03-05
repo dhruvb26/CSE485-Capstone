@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from rl.env.actions import Action, ActionType
 from rl.env.personas import Persona
 from rl.env.scenario import ITEMS, Scenario
 from rl.verifiers.format import parse_xml_turn
+
+_MAX_TALK_LEN = 200
+_TALK_RE = re.compile(r"<talk>(.*?)</talk>", re.DOTALL | re.IGNORECASE)
 
 
 @dataclass
@@ -142,15 +146,25 @@ class NegotiationEnv:
     def build_learner_prompt(self) -> str:
         """Build the prompt for the learner's next turn.
 
-        Mirrors the CaSiNo prompt format used in SFT training data so the
-        model sees familiar instruction phrasing.
+        Format instructions appear both at the top (survives truncation)
+        and at the bottom (matches SFT training layout).
         """
         vals = self.scenario.agent_values
         max_pts = self.scenario.agent_max_points
 
+        format_spec = (
+            "Produce your next negotiation turn using the following XML format:\n"
+            "<thought>your internal reasoning (point arithmetic, partner priority "
+            "estimate, justification)</thought>\n"
+            "<talk>your natural language response to your partner</talk>\n"
+            '<action>{"type": "offer"|"counter"|"accept"|"reject", '
+            "...item allocations for yourself}</action>"
+        )
+
         lines = [
             "You are negotiating with your campsite neighbor over extra supply "
             "of food, water, and firewood for your camping trip.",
+            "You MUST respond with exactly one <thought>, one <talk>, and one <action> XML block.",
             "",
             "Items available: 3 Food, 3 Water, 3 Firewood",
             (
@@ -167,17 +181,11 @@ class NegotiationEnv:
             lines.append("Dialogue so far:")
             for turn in self.history:
                 speaker = "You" if turn.agent == "learner" else "Partner"
-                lines.append(f"{speaker}: {turn.talk}")
+                talk = turn.talk[:_MAX_TALK_LEN]
+                lines.append(f"{speaker}: {talk}")
             lines.append("")
 
-        lines.append(
-            "Produce your next negotiation turn using the following XML format:\n"
-            "<thought>your internal reasoning (point arithmetic, partner priority "
-            "estimate, justification)</thought>\n"
-            "<talk>your natural language response to your partner</talk>\n"
-            '<action>{"type": "offer"|"counter"|"accept"|"reject", '
-            "...item allocations for yourself}</action>"
-        )
+        lines.append(format_spec)
         return "\n".join(lines)
 
     def build_clone_prompt(self) -> str:
@@ -189,10 +197,20 @@ class NegotiationEnv:
         vals = self.scenario.partner_values
         max_pts = self.scenario.partner_max_points
 
+        format_spec = (
+            "Produce your next negotiation turn using the following XML format:\n"
+            "<thought>your internal reasoning (point arithmetic, partner priority "
+            "estimate, justification)</thought>\n"
+            "<talk>your natural language response to your partner</talk>\n"
+            '<action>{"type": "offer"|"counter"|"accept"|"reject", '
+            "...item allocations for yourself}</action>"
+        )
+
         lines = [
             "You are negotiating with your campsite neighbor over extra supply "
             "of food, water, and firewood for your camping trip.",
             self.persona.system_prompt_suffix,
+            "You MUST respond with exactly one <thought>, one <talk>, and one <action> XML block.",
             "",
             "Items available: 3 Food, 3 Water, 3 Firewood",
             (
@@ -209,30 +227,36 @@ class NegotiationEnv:
             lines.append("Dialogue so far:")
             for turn in self.history:
                 speaker = "Partner" if turn.agent == "learner" else "You"
-                lines.append(f"{speaker}: {turn.talk}")
+                talk = turn.talk[:_MAX_TALK_LEN]
+                lines.append(f"{speaker}: {talk}")
             lines.append("")
 
-        lines.append(
-            "Produce your next negotiation turn using the following XML format:\n"
-            "<thought>your internal reasoning (point arithmetic, partner priority "
-            "estimate, justification)</thought>\n"
-            "<talk>your natural language response to your partner</talk>\n"
-            '<action>{"type": "offer"|"counter"|"accept"|"reject", '
-            "...item allocations for yourself}</action>"
-        )
+        lines.append(format_spec)
         return "\n".join(lines)
 
 
 def _parse_agent_output(
     raw: str, scenario: Scenario
 ) -> tuple[str, str, Action | None, bool]:
-    """Parse raw model output into (thought, talk, action, valid)."""
+    """Parse raw model output into (thought, talk, action, valid).
+
+    When full XML parsing fails, we salvage just the ``<talk>`` content
+    (if present) or fall back to a short placeholder.  We **never** dump
+    the entire raw output into ``talk`` because that would leak private
+    ``<thought>`` content into the dialogue history and corrupt
+    subsequent prompts.
+    """
     parsed = parse_xml_turn(raw)
     if parsed is None:
-        return "", raw.strip(), None, False
+        talk_m = _TALK_RE.search(raw)
+        if talk_m:
+            talk = talk_m.group(1).strip()[:_MAX_TALK_LEN]
+        else:
+            talk = "[no response]"
+        return "", talk, None, False
 
     thought = parsed["thought"]
-    talk = parsed["talk"]
+    talk = parsed["talk"][:_MAX_TALK_LEN]
 
     try:
         action_dict = json.loads(parsed["action_raw"])

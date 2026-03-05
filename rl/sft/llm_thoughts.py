@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ class _TurnThoughtResponse(BaseModel):
             "for this turn. Include point/price arithmetic and partner priority estimate."
         )
     )
+
 
 _EVAL_SYSTEM = (
     "You are a reasoning assistant for negotiation tasks. "
@@ -94,7 +96,7 @@ class LLMThoughtGenerator:
                 ],
                 response_format=_ThoughtResponse,
                 temperature=0.7,
-                max_tokens=500,
+                max_completion_tokens=2000,
             )
             parsed = resp.choices[0].message.parsed
             if parsed is None:
@@ -105,6 +107,7 @@ class LLMThoughtGenerator:
                 "LLM thought generation failed (%s); using deterministic.", exc
             )
             return det_thought, "deterministic"
+
 
 class AsyncLLMThoughtGenerator:
     """Generates thoughts for many rows in parallel using AsyncOpenAI."""
@@ -130,6 +133,7 @@ class AsyncLLMThoughtGenerator:
 
         if is_turn:
             import json
+
             strat = row.get("strategy_label")
             strategy_line = f"\nStrategy annotation: {strat}" if strat else ""
             user_msg = _TURN_USER.format(
@@ -142,7 +146,8 @@ class AsyncLLMThoughtGenerator:
             response_fmt = _TurnThoughtResponse
         else:
             user_msg = _EVAL_USER.format(
-                prompt=row["prompt"], answer_json=row["answer_json"],
+                prompt=row["prompt"],
+                answer_json=row["answer_json"],
             )
             system_msg = _EVAL_SYSTEM
             response_fmt = _ThoughtResponse
@@ -157,7 +162,7 @@ class AsyncLLMThoughtGenerator:
                     ],
                     response_format=response_fmt,
                     temperature=0.7,
-                    max_tokens=300,
+                    max_completion_tokens=2000,
                 )
                 parsed = resp.choices[0].message.parsed
                 if parsed is None:
@@ -169,7 +174,8 @@ class AsyncLLMThoughtGenerator:
                 return row["det_thought"], "deterministic"
 
     async def generate_batch(
-        self, rows: list[dict],
+        self,
+        rows: list[dict],
     ) -> list[tuple[str, str]]:
         """Process all rows in parallel, returning (thought, source) per row."""
         tasks = [self._generate_one(row) for row in rows]

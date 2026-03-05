@@ -47,6 +47,8 @@ logger = logging.getLogger(__name__)
 LOG_DIR = Path("logs")
 RUNS_DIR = Path("runs")
 
+_CLONE_MAX_RETRIES = 2
+
 
 def setup_logging() -> str:
     """Configure root logger to write to both stderr and a timestamped log file.
@@ -79,20 +81,19 @@ def setup_logging() -> str:
     logger.info("Logging to %s", log_file.resolve())
     return timestamp
 
-def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig, run_timestamp: str | None = None) -> None:
+def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig, run_timestamp: str) -> None:
     """Main GRPO training loop."""
     rng = random.Random(grpo_cfg.seed)
     torch.manual_seed(grpo_cfg.seed)
 
-    timestamp = run_timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = RUNS_DIR / f"grpo_train_{timestamp}"
+    run_dir = RUNS_DIR / f"grpo_train_{run_timestamp}"
     episodes_dir = run_dir / "episodes"
     episodes_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Run directory: %s", run_dir.resolve())
 
     # n_episodes = grpo_cfg.training.epochs * 1000
-    n_episodes = 100
-    max_new_tokens = 512
+    n_episodes = 100 # for testing
+    max_new_tokens = 256
     temperature = grpo_cfg.temperature
 
     n_gpus = torch.cuda.device_count()
@@ -103,13 +104,8 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig, run_timestamp: st
         ref_device_map: dict | str = {"": 1}
         logger.info("Multi-GPU: learner → cuda:0, clone+ref → cuda:1")
     else:
-        learner_device_map = {"": 0}
-        clone_device_map = {"": "cpu"}
-        ref_device_map = {"": "cpu"}
-        logger.info(
-            "Single-GPU: learner → cuda:0 (4-bit), clone+ref → cpu (fp16). "
-            "Clone generation will be slow; allocate 2 GPUs to avoid this."
-        )
+        logger.error("At least 2 GPUs are required for training. Exiting...")
+        exit(1)
 
     logger.info("Loading learner model...")
     learner_model, tokenizer = load_model_and_tokenizer(
@@ -167,7 +163,7 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig, run_timestamp: st
     with (run_dir / "run_meta.json").open("w") as _f:
         json.dump(
             {
-                "timestamp": timestamp,
+                "timestamp": run_timestamp,
                 "base_model": grpo_cfg.base_model,
                 "sft_adapter_path": grpo_cfg.sft_adapter_path,
                 "n_episodes": n_episodes,
@@ -283,6 +279,18 @@ def grpo_train(grpo_cfg: GRPOConfig, reward_cfg: RewardConfig, run_timestamp: st
                 clone_output = clone_generate(
                     clone_model, tokenizer, clone_prompt, max_new_tokens,
                 )
+
+                _, _, _, clone_valid = _parse_agent_output(clone_output, scenario)
+                if not clone_valid:
+                    for _retry in range(_CLONE_MAX_RETRIES - 1):
+                        logger.debug("  clone output invalid — retry %d", _retry + 1)
+                        clone_output = clone_generate(
+                            clone_model, tokenizer, clone_prompt, max_new_tokens,
+                        )
+                        _, _, _, clone_valid = _parse_agent_output(clone_output, scenario)
+                        if clone_valid:
+                            break
+
                 logger.debug(
                     "  clone turn (first 300 chars): %s",
                     clone_output[:300].replace("\n", "\\n"),

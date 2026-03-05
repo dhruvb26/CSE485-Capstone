@@ -4,10 +4,10 @@ dedup: true
 
 max_total: 1000
 
-llm_model: gpt-4o-mini
+llm_model: gpt-4.1-2025-04-14
 llm_api_key_env: OPENAI_API_KEY
 
-max_concurrency: 30
+max_concurrency: 5
 
 datasets:
   casino:
@@ -24,9 +24,9 @@ datasets:
       - turn_cl
 
 llm_ratios:
-  turn_ca: 0.7
-  turn_dnd: 0.6
-  turn_cl: 0.6
+  turn_ca: 1.0
+  turn_dnd: 1.0
+  turn_cl: 1.0
 
 weights:
   turn_ca: 3.0

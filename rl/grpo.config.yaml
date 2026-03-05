@@ -9,14 +9,14 @@ grpo:
   sft_adapter_path: checkpoints/sft-tuned/adapter
   out_dir: checkpoints/grpo
   seed: 42
-  temperature: 1.0
+  temperature: 0.7
   resume_from: null
   lora:
     rank: 64
     alpha: 64
     dropout: 0.05
   training:
-    max_seq_length: 1024
+    max_seq_length: 2048
     load_in_4bit: true
     lr: 0.00002
     epochs: 1
