@@ -7,6 +7,7 @@ import logging
 import math
 
 import torch
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,8 @@ MAX_SEQ_LEN = 2048
 
 @torch.no_grad()
 def generate_candidates(
-    model,
-    tokenizer,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
     prompt: str,
     n_candidates: int,
     max_new_tokens: int,
@@ -29,7 +30,7 @@ def generate_candidates(
         **inputs,
         max_new_tokens=max_new_tokens,
         do_sample=True,
-        temperature=max(temperature, 0.01),
+        temperature=temperature,
         num_return_sequences=n_candidates,
         pad_token_id=tokenizer.eos_token_id,
         repetition_penalty=1.15,
@@ -43,7 +44,7 @@ def generate_candidates(
     return candidates
 
 
-def clone_generate(model, tokenizer, prompt: str, max_new_tokens: int) -> str:
+def clone_generate(model: PreTrainedModel, tokenizer: PreTrainedTokenizerBase, prompt: str, max_new_tokens: int) -> str:
     """Generate a single response from the clone model."""
     candidates = generate_candidates(model, tokenizer, prompt, 1, max_new_tokens, 0.7)
     return candidates[0] if candidates else ""
@@ -57,7 +58,7 @@ def compute_grpo_advantages(scores: list[float]) -> list[float]:
     std = math.sqrt(var) if var > 0 else 1.0
     return [(s - mean) / std for s in scores]
 
-def _clip_and_step(model, optimizer, label: str = "") -> None:
+def _clip_and_step(model: PreTrainedModel, optimizer: torch.optim.Optimizer, label: str = "") -> None:
     """Shared grad-norm clip + NaN guard + optimizer step."""
     raw_grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float("inf"))
     prefix = f"  {label} " if label else "  "
@@ -71,8 +72,14 @@ def _clip_and_step(model, optimizer, label: str = "") -> None:
 
 
 def _kl_weighted_loss(
-    model, ref_model, tokenizer, inputs, prompt_len, advantage, kl_coeff, divisor,
-):
+    model: PreTrainedModel,
+    ref_model: PreTrainedModel,
+    inputs: dict,
+    prompt_len: int,
+    advantage: float,
+    kl_coeff: float,
+    divisor: int,
+) -> bool:
     """Compute and backward a single (candidate, advantage) contribution.
 
     Shared by both per-turn GRPO and episode-level REINFORCE.
@@ -107,15 +114,15 @@ def _kl_weighted_loss(
 
 
 def policy_gradient_step(
-    model,
-    ref_model,
-    tokenizer,
-    optimizer,
+    model: PreTrainedModel,
+    ref_model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    optimizer: torch.optim.Optimizer,
     prompt: str,
     candidates: list[str],
     advantages: list[float],
     kl_coeff: float,
-):
+) -> None:
     """Single GRPO policy gradient update step.
 
     Increases log-probability of candidates with positive advantage,
@@ -158,15 +165,15 @@ def policy_gradient_step(
 
 
 def episode_reinforce_step(
-    model,
-    ref_model,
-    tokenizer,
-    optimizer,
+    model: PreTrainedModel,
+    ref_model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    optimizer: torch.optim.Optimizer,
     episode_turns: list[dict],
     ep_reward: float,
     baseline: float,
     kl_coeff: float,
-):
+) -> None:
     """REINFORCE-style update using the episode-level terminal reward.
 
     For each learner turn that produced a chosen response, compute a
