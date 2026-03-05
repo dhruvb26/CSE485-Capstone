@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 #
-# Download files or directories from dbansa11@sol.asu.edu to local.
-# Uses rsync over SSH.
+# Sync runs/ and logs/ from a project directory on dbansa11@sol.asu.edu to local.
+# Uses rsync over SSH. Creates local runs and logs dirs if they don't exist.
 #
 # Usage:
-#   ./scripts/pull-from-htc.sh remote_path [local_path]
-#   ./scripts/pull-from-htc.sh user@host:remote_path [local_path]   # override host
+#   ./scripts/pull-from-htc.sh remote_project_path [local_dest]
+#   ./scripts/pull-from-htc.sh user@host:remote_project_path [local_dest]   # override host
 #
 # Examples:
-#   ./scripts/pull-from-htc.sh ~/runs ./runs
-#   ./scripts/pull-from-htc.sh ~/outputs/model.pt .
+#   ./scripts/pull-from-htc.sh ~/capstone
+#   ./scripts/pull-from-htc.sh ~/capstone .
+#   ./scripts/pull-from-htc.sh ~/capstone ./backup
 #
 set -e
 
@@ -18,12 +19,10 @@ REMOTE_SPEC="$1"
 LOCAL_DEST="${2:-.}"
 
 if [[ -z "$REMOTE_SPEC" ]]; then
-  echo "Usage: $0 remote_path [local_path]" >&2
-  echo "       (remote is on $REMOTE_DEFAULT unless you pass user@host:path)" >&2
+  echo "Usage: $0 remote_project_path [local_dest]" >&2
+  echo "       Syncs runs/ and logs/ from remote project into local_dest (default: .)" >&2
+  echo "       Remote is on $REMOTE_DEFAULT unless you pass user@host:path" >&2
   echo "" >&2
-  echo "Examples:" >&2
-  echo "  $0 ~/runs ./runs" >&2
-  echo "  $0 ~/outputs/model.pt ." >&2
   exit 1
 fi
 
@@ -32,5 +31,15 @@ if [[ "$REMOTE_SPEC" != *:* ]]; then
   REMOTE_SPEC="${REMOTE_DEFAULT}:${REMOTE_SPEC}"
 fi
 
-echo "Pulling: $REMOTE_SPEC -> $LOCAL_DEST"
-exec rsync -avz --progress -e ssh "$REMOTE_SPEC" "$LOCAL_DEST"
+mkdir -p "$LOCAL_DEST/runs" "$LOCAL_DEST/logs"
+
+REMOTE_RUNS="${REMOTE_SPEC}/runs"
+REMOTE_LOGS="${REMOTE_SPEC}/logs"
+
+echo "Pulling runs: $REMOTE_RUNS -> $LOCAL_DEST/runs"
+rsync -avz --progress -e ssh "$REMOTE_RUNS/" "$LOCAL_DEST/runs/"
+
+echo "Pulling logs: $REMOTE_LOGS -> $LOCAL_DEST/logs"
+rsync -avz --progress -e ssh "$REMOTE_LOGS/" "$LOCAL_DEST/logs/"
+
+echo "Done."
