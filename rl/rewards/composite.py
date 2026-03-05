@@ -5,6 +5,7 @@ from __future__ import annotations
 from rl.config import RewardConfig
 from rl.env.negotiation import NegotiationEnv, Turn
 from rl.env.scenario import Scenario
+from rl.rewards.action_quality import action_quality_reward
 from rl.rewards.arithmetic_reward import arithmetic_reward
 from rl.rewards.format_reward import format_reward
 from rl.rewards.partner_model import partner_model_reward
@@ -88,11 +89,18 @@ class CompositeReward:
         ]
         r_partner = sum(pm_scores) / len(pm_scores)
 
+        aq_scores = [
+            action_quality_reward(t.action, env.scenario, i, t.valid)
+            for i, t in enumerate(learner_turns)
+        ]
+        r_action = sum(aq_scores) / len(aq_scores)
+
         w_terminal = self.config.terminal_weight
         w_format = self._decayed_weight(self.config.format_weight, episode)
         w_arithmetic = self.config.arithmetic_weight
         w_strategy = self._decayed_weight(self.config.strategy_weight, episode)
         w_partner = self.config.partner_model_weight
+        w_action = self.config.action_quality_weight
 
         total = (
             w_terminal * r_terminal
@@ -100,6 +108,7 @@ class CompositeReward:
             + w_arithmetic * r_arithmetic
             + w_strategy * r_strategy
             + w_partner * r_partner
+            + w_action * r_action
         )
         return total
 
@@ -115,15 +124,20 @@ class CompositeReward:
         r_arithmetic = arithmetic_reward(turn.thought, scenario.agent_values)
         r_strategy = strategy_reward(turn.talk, turn_index, self.classifier)
         r_partner = partner_model_reward(turn.thought, scenario)
+        r_action = action_quality_reward(
+            turn.action, scenario, turn_index, turn.valid,
+        )
 
         w_format = self._decayed_weight(self.config.format_weight, episode)
         w_arithmetic = self.config.arithmetic_weight
         w_strategy = self._decayed_weight(self.config.strategy_weight, episode)
         w_partner = self.config.partner_model_weight
+        w_action = self.config.action_quality_weight
 
         return (
             w_format * r_format
             + w_arithmetic * r_arithmetic
             + w_strategy * r_strategy
             + w_partner * r_partner
+            + w_action * r_action
         )

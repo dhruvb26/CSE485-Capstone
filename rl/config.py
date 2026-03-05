@@ -94,12 +94,6 @@ def load_config(path: Path) -> TrainConfig:
     with open(path, encoding="utf-8") as f:
         return TrainConfig.from_dict(yaml.safe_load(f))
 
-
-# ---------------------------------------------------------------------------
-# SFT training config
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class LoraConfig:
     rank: int
@@ -149,11 +143,6 @@ def load_train_config(path: Path) -> SFTTrainConfig:
         return SFTTrainConfig.from_dict(yaml.safe_load(f))
 
 
-# ---------------------------------------------------------------------------
-# GRPO config
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class GRPOConfig:
     candidates_per_turn: int
@@ -168,6 +157,8 @@ class GRPOConfig:
     sft_adapter_path: str
     out_dir: str
     seed: int
+    temperature: float = 1.0
+    resume_from: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> GRPOConfig:
@@ -184,6 +175,8 @@ class GRPOConfig:
             sft_adapter_path=d["sft_adapter_path"],
             out_dir=d["out_dir"],
             seed=d["seed"],
+            temperature=d.get("temperature", 1.0),
+            resume_from=d.get("resume_from"),
         )
 
 
@@ -194,6 +187,7 @@ class RewardConfig:
     arithmetic_weight: float
     strategy_weight: float
     partner_model_weight: float
+    action_quality_weight: float
     decay_window: int
     strategy_classifier_path: str
 
@@ -205,6 +199,7 @@ class RewardConfig:
             arithmetic_weight=d["arithmetic_weight"],
             strategy_weight=d["strategy_weight"],
             partner_model_weight=d["partner_model_weight"],
+            action_quality_weight=d.get("action_quality_weight", 0.20),
             decay_window=d["decay_window"],
             strategy_classifier_path=d["strategy_classifier_path"],
         )
