@@ -29,4 +29,5 @@ class OpenAIModel(BaseModel):
             temperature=self.temperature,
             max_completion_tokens=self.max_tokens,
         )
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        return content if content is not None else ""

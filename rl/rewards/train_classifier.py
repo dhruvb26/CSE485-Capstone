@@ -100,6 +100,9 @@ def train(data_path: str, out_dir: str, epochs: int, batch_size: int, lr: float)
     )
     dataset.set_format("torch")
 
+    split = dataset.train_test_split(test_size=0.15, seed=42)
+    train_ds, eval_ds = split["train"], split["test"]
+
     model = AutoModelForSequenceClassification.from_pretrained(
         BASE_MODEL,
         num_labels=NUM_LABELS,
@@ -121,12 +124,16 @@ def train(data_path: str, out_dir: str, epochs: int, batch_size: int, lr: float)
         save_total_limit=2,
         fp16=False,
         report_to="none",
+        eval_strategy="epoch",
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
     )
 
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=dataset,
+        train_dataset=train_ds,
+        eval_dataset=eval_ds,
         tokenizer=tokenizer,
     )
 

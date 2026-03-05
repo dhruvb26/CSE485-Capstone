@@ -9,7 +9,8 @@ import re
 _ACTION_TYPES = {"offer", "counter", "accept", "reject", "propose"}
 
 _THOUGHT_RE = re.compile(r"<thought>(.*?)</thought>", re.DOTALL | re.IGNORECASE)
-_TALK_RE = re.compile(r"<talk>(.*?)</talk>", re.DOTALL | re.IGNORECASE)
+TALK_RE = re.compile(r"<talk>(.*?)</talk>", re.DOTALL | re.IGNORECASE)
+_TALK_RE = TALK_RE
 _ACTION_RE = re.compile(r"<action>(.*?)</action>", re.DOTALL | re.IGNORECASE)
 
 

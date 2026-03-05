@@ -27,7 +27,7 @@ def check_arithmetic(
     """
     calcs = _CALC_RE.findall(thought)
     if not calcs:
-        return True, "No arithmetic expressions found to verify."
+        return False, "No arithmetic expressions found (at least one required)."
 
     known_pts = set(values.values())
     errors = []

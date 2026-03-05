@@ -159,6 +159,7 @@ class GRPOConfig:
     seed: int
     temperature: float = 1.0
     resume_from: str | None = None
+    episode_weight: float = 1.0
 
     @classmethod
     def from_dict(cls, d: dict) -> GRPOConfig:
@@ -177,6 +178,7 @@ class GRPOConfig:
             seed=d["seed"],
             temperature=d.get("temperature", 1.0),
             resume_from=d.get("resume_from"),
+            episode_weight=d.get("episode_weight", 1.0),
         )
 
 

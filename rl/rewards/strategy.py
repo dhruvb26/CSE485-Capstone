@@ -49,7 +49,6 @@ def strategy_reward(
         return 0.0
 
     score = 0.0
-    n_labels = len(predicted)
 
     if turn_index <= 3:
         if "elicit-pref" in predicted:
@@ -65,4 +64,4 @@ def strategy_reward(
     if "coordination" in predicted:
         score += 0.1
 
-    return min(score / max(n_labels, 1), 1.0)
+    return min(score, 1.0)

@@ -17,6 +17,7 @@ and dataset annotations.
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from rl.handlers.casino.dataset import (
@@ -27,6 +28,8 @@ from rl.handlers.casino.dataset import (
     sanitize_unicode,
 )
 from rl.handlers.craigslist.dataset import extract_prices, infer_action
+
+logger = logging.getLogger(__name__)
 
 CA_ITEMS = ["food", "water", "firewood"]
 CA_COUNTS: dict[str, int] = {"food": 3, "water": 3, "firewood": 3}
@@ -95,7 +98,17 @@ def _parse_quantities(
                     n = _NUM_WORDS[v]
                     found[item] = counts.get(item, 3) if n == -1 else n
                 break
+    for item in list(found):
+        found[item] = min(found[item], counts.get(item, 3))
     return found or None
+
+
+_NEGATORS = {"not", "don't", "can't", "cannot", "n't", "no", "never"}
+
+
+def _has_negation_before(text: str, match_start: int) -> bool:
+    window = text[max(0, match_start - 20):match_start].lower().split()
+    return bool(set(window) & _NEGATORS)
 
 
 def _action_type(text: str, has_prior_offer: bool) -> str:
@@ -103,6 +116,8 @@ def _action_type(text: str, has_prior_offer: bool) -> str:
     reject_kw = (
         "no deal", "reject", "can't agree", "cannot agree",
         "walk away", "no way", "not going to work",
+        "don't agree", "do not agree", "can't accept", "cannot accept",
+        "don't accept", "do not accept",
     )
     accept_kw = (
         "deal", "accept", "agree", "sounds good", "works for me",
@@ -111,8 +126,10 @@ def _action_type(text: str, has_prior_offer: bool) -> str:
     )
     if any(k in lower for k in reject_kw):
         return "reject"
-    if any(k in lower for k in accept_kw):
-        return "accept"
+    for kw in accept_kw:
+        idx = lower.find(kw)
+        if idx != -1 and not _has_negation_before(lower, idx):
+            return "accept"
     return "counter" if has_prior_offer else "offer"
 
 
@@ -285,6 +302,8 @@ def _parse_dnd_output(output_str: str) -> tuple[dict[str, int], dict[str, int]]:
     for tok in output_str.strip().split():
         if "=" in tok:
             vals.append(int(tok.split("=")[1]))
+    if len(vals) < 6:
+        logger.warning("Malformed DND output (expected 6 values, got %d): %s", len(vals), output_str[:100])
     you = {"book": vals[0], "hat": vals[1], "ball": vals[2]} if len(vals) >= 3 else {}
     them = {"book": vals[3], "hat": vals[4], "ball": vals[5]} if len(vals) >= 6 else {}
     return you, them
@@ -363,12 +382,8 @@ def _interleave_cl(
     opp_role: str,
 ) -> list[dict]:
     """Reconstruct chronological turn order from separate agent/opponent lists."""
-    if len(agent_texts) > len(opp_texts):
-        first_role, first = agent_role, agent_texts
-        second_role, second = opp_role, opp_texts
-    else:
-        first_role, first = opp_role, opp_texts
-        second_role, second = agent_role, agent_texts
+    first_role, first = opp_role, opp_texts
+    second_role, second = agent_role, agent_texts
 
     turns: list[dict] = []
     for i in range(max(len(first), len(second))):

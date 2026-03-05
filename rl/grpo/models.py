@@ -43,9 +43,9 @@ def load_model_and_tokenizer(
         quantization_config=quant_config,
         device_map=device_map,
         torch_dtype=torch.bfloat16,
-        trust_remote_code=True,
+        trust_remote_code=False,
     )
-    tokenizer = AutoTokenizer.from_pretrained(cfg.base_model, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(cfg.base_model, trust_remote_code=False)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
 
