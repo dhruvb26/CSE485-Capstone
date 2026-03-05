@@ -106,11 +106,11 @@ class TrainingConfig:
     max_seq_length: int
     load_in_4bit: bool
     lr: float
-    epochs: int
-    batch_size: int
     grad_accum: int
     warmup_ratio: float
     save_steps: int
+    epochs: int = 1
+    batch_size: int = 1
 
 
 @dataclass

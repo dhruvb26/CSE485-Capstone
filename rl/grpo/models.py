@@ -6,7 +6,8 @@ import logging
 from pathlib import Path
 
 import torch
-from peft import LoraConfig as PeftLoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig as PeftLoraConfig
+from peft import get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from rl.config import GRPOConfig
@@ -33,7 +34,7 @@ def load_model_and_tokenizer(
         quant_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
         )
 
@@ -41,7 +42,7 @@ def load_model_and_tokenizer(
         cfg.base_model,
         quantization_config=quant_config,
         device_map=device_map,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         trust_remote_code=True,
     )
     tokenizer = AutoTokenizer.from_pretrained(cfg.base_model, trust_remote_code=True)
@@ -60,15 +61,24 @@ def load_model_and_tokenizer(
         r=cfg.lora.rank,
         lora_alpha=cfg.lora.alpha,
         lora_dropout=cfg.lora.dropout,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        target_modules=[
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
         bias="none",
         task_type="CAUSAL_LM",
     )
     model = get_peft_model(model, peft_config)
 
     if cfg.sft_adapter_path:
-        from safetensors.torch import load_file as load_safetensors
         from peft import set_peft_model_state_dict
+        from safetensors.torch import load_file as load_safetensors
+
         adapter_weights = load_safetensors(
             str(Path(cfg.sft_adapter_path) / "adapter_model.safetensors")
         )
@@ -82,7 +92,8 @@ def sync_clone(learner_model, clone_model) -> None:
     """Copy learner's LoRA weights to the clone."""
     clone_device = next(clone_model.parameters()).device
     learner_state = {
-        k: v.clone().to(clone_device) for k, v in learner_model.state_dict().items()
+        k: v.clone().to(clone_device)
+        for k, v in learner_model.state_dict().items()
         if "lora" in k.lower()
     }
     clone_state = clone_model.state_dict()

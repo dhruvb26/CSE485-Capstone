@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import random
 import time
 from collections import deque
@@ -26,6 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
+from torch.optim.lr_scheduler import LambdaLR
 
 from rl.config import GRPOConfig, RewardConfig, load_grpo_config
 from rl.env.negotiation import NegotiationEnv, Turn, _parse_agent_output
@@ -34,6 +36,7 @@ from rl.env.scenario import sample_scenario
 from rl.grpo.checkpoint import load_checkpoint, save_checkpoint
 from rl.grpo.models import load_model_and_tokenizer, sync_clone
 from rl.grpo.policy import (
+    _clip_and_step,
     clone_generate,
     compute_grpo_advantages,
     episode_reinforce_step,
@@ -94,9 +97,8 @@ def grpo_train(
     episodes_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Run directory: %s", run_dir.resolve())
 
-    # n_episodes = grpo_cfg.training.epochs * 1000
     n_episodes = 100  # for testing
-    max_new_tokens = 256
+    max_new_tokens = 512
     temperature = grpo_cfg.temperature
 
     n_gpus = torch.cuda.device_count()
@@ -130,14 +132,31 @@ def grpo_train(
 
     reward = CompositeReward(
         config=reward_cfg,
-        terminal_lambda=grpo_cfg.terminal_lambda, # for the final payoff across the two agents
+        terminal_lambda=grpo_cfg.terminal_lambda,  # for the final payoff across the two agents
         walkaway_penalty=grpo_cfg.walkaway_penalty,
     )
 
-    # for the learner model, only optimize the parameters that require gradients
     optimizer = torch.optim.AdamW(
         [p for p in learner_model.parameters() if p.requires_grad],
         lr=grpo_cfg.training.lr,
+        weight_decay=0.0,
+    )
+
+    grad_accum = grpo_cfg.training.grad_accum
+    warmup_ratio = grpo_cfg.training.warmup_ratio
+    total_steps = n_episodes // grad_accum
+    warmup_steps = int(total_steps * warmup_ratio)
+
+    def _lr_lambda(current_step: int) -> float:
+        if current_step < warmup_steps:
+            return current_step / max(warmup_steps, 1)
+        progress = (current_step - warmup_steps) / max(total_steps - warmup_steps, 1)
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+
+    scheduler = LambdaLR(optimizer, lr_lambda=_lr_lambda)
+    logger.info(
+        "LR schedule: %d warmup steps, %d total steps (grad_accum=%d)",
+        warmup_steps, total_steps, grad_accum,
     )
 
     persona_names = list(PERSONAS.keys())
@@ -200,6 +219,7 @@ def grpo_train(
 
     avg_reward = 0.0
     deal_rate = 0.0
+    optimizer.zero_grad()
 
     for episode in range(start_episode, n_episodes):
         ep_start = time.time()
@@ -297,6 +317,7 @@ def grpo_train(
                     candidates,
                     advantages,
                     grpo_cfg.kl_coeff,
+                    accumulate_only=True,
                 )
 
                 env.step(candidates[best_idx])
@@ -355,7 +376,13 @@ def grpo_train(
             ep_reward,
             baseline,
             grpo_cfg.kl_coeff,
+            accumulate_only=True,
         )
+
+        if (episode + 1) % grad_accum == 0:
+            _clip_and_step(learner_model, optimizer)
+            optimizer.zero_grad()
+            scheduler.step()
 
         recent_rewards.append(ep_reward)
         recent_deals.append(bool(env.deal_reached))

@@ -18,6 +18,7 @@ _TALK_RE = re.compile(r"<talk>(.*?)</talk>", re.DOTALL | re.IGNORECASE)
 @dataclass
 class Turn:
     """Record of a single turn in the negotiation."""
+
     agent: str
     raw_output: str
     thought: str
@@ -33,6 +34,7 @@ class NegotiationEnv:
     Manages alternating turns between a learner and a clone opponent,
     validates outputs, and tracks the dialogue history.
     """
+
     scenario: Scenario
     persona: Persona
     max_turns: int
@@ -103,7 +105,8 @@ class NegotiationEnv:
                 return turn
             prev = self.history[-2]
             if prev.action is None or prev.action.type not in (
-                ActionType.OFFER, ActionType.COUNTER
+                ActionType.OFFER,
+                ActionType.COUNTER,
             ):
                 turn.valid = False
                 if self.current_turn >= self.max_turns:
@@ -129,7 +132,8 @@ class NegotiationEnv:
         if not self._deal_reached or self._agent_deal_action is None:
             return 0
         return sum(
-            self._agent_deal_action.allocations.get(item, 0) * self.scenario.agent_values[item]
+            self._agent_deal_action.allocations.get(item, 0)
+            * self.scenario.agent_values[item]
             for item in ITEMS
         )
 
@@ -138,7 +142,10 @@ class NegotiationEnv:
         if not self._deal_reached or self._agent_deal_action is None:
             return 0
         return sum(
-            (self.scenario.items[item] - self._agent_deal_action.allocations.get(item, 0))
+            (
+                self.scenario.items[item]
+                - self._agent_deal_action.allocations.get(item, 0)
+            )
             * self.scenario.partner_values[item]
             for item in ITEMS
         )
@@ -186,7 +193,7 @@ class NegotiationEnv:
             lines.append("")
 
         lines.append(format_spec)
-        return "\n".join(lines)
+        return "[INST] " + "\n".join(lines) + " [/INST]"
 
     def build_clone_prompt(self) -> str:
         """Build the prompt for the clone opponent's next turn.
@@ -232,7 +239,7 @@ class NegotiationEnv:
             lines.append("")
 
         lines.append(format_spec)
-        return "\n".join(lines)
+        return "[INST] " + "\n".join(lines) + " [/INST]"
 
 
 def _parse_agent_output(
