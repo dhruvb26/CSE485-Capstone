@@ -87,7 +87,8 @@ class NegotiationEnv:
         self.history.append(turn)
 
         if not valid:
-            self._done = True
+            if self.current_turn >= self.max_turns:
+                self._done = True
             return turn
 
         if action is not None and action.type == ActionType.ACCEPT:
@@ -135,53 +136,85 @@ class NegotiationEnv:
         )
 
     def build_learner_prompt(self) -> str:
-        """Build the prompt for the learner's next turn."""
+        """Build the prompt for the learner's next turn.
+
+        Mirrors the CaSiNo prompt format used in SFT training data so the
+        model sees familiar instruction phrasing.
+        """
+        vals = self.scenario.agent_values
+        max_pts = self.scenario.agent_max_points
+
         lines = [
-            "You are negotiating over food, water, and firewood (3 of each).",
+            "You are negotiating with your campsite neighbor over extra supply "
+            "of food, water, and firewood for your camping trip.",
             "",
-            "Your point values:",
+            f"Items available: 3 Food, 3 Water, 3 Firewood",
+            (
+                f"Your point values: "
+                f"Food={vals['food']}pts, "
+                f"Water={vals['water']}pts, "
+                f"Firewood={vals['firewood']}pts"
+            ),
+            f"Max possible points: {max_pts}pts",
+            "",
         ]
-        for item in ITEMS:
-            lines.append(f"  {item}: {self.scenario.agent_values[item]} points each")
-        lines.append("")
 
         if self.history:
             lines.append("Dialogue so far:")
             for turn in self.history:
                 speaker = "You" if turn.agent == "learner" else "Partner"
-                lines.append(f"  {speaker}: {turn.talk}")
+                lines.append(f"{speaker}: {turn.talk}")
             lines.append("")
 
         lines.append(
-            "Respond using XML tags: <thought>reasoning</thought> "
-            "<talk>your message</talk> "
-            '<action>{"type": "...", ...allocations}</action>'
+            "Produce your next negotiation turn using the following XML format:\n"
+            "<thought>your internal reasoning (point arithmetic, partner priority "
+            "estimate, justification)</thought>\n"
+            "<talk>your natural language response to your partner</talk>\n"
+            '<action>{"type": "offer"|"counter"|"accept"|"reject", '
+            "...item allocations for yourself}</action>"
         )
         return "\n".join(lines)
 
     def build_clone_prompt(self) -> str:
-        """Build the prompt for the clone opponent's next turn."""
+        """Build the prompt for the clone opponent's next turn.
+
+        Same structure as the learner prompt but from the partner's
+        perspective, with the clone persona injected.
+        """
+        vals = self.scenario.partner_values
+        max_pts = self.scenario.partner_max_points
+
         lines = [
-            "You are negotiating over food, water, and firewood (3 of each).",
+            "You are negotiating with your campsite neighbor over extra supply "
+            "of food, water, and firewood for your camping trip.",
             self.persona.system_prompt_suffix,
             "",
-            "Your point values:",
+            f"Items available: 3 Food, 3 Water, 3 Firewood",
+            (
+                f"Your point values: "
+                f"Food={vals['food']}pts, "
+                f"Water={vals['water']}pts, "
+                f"Firewood={vals['firewood']}pts"
+            ),
+            f"Max possible points: {max_pts}pts",
+            "",
         ]
-        for item in ITEMS:
-            lines.append(f"  {item}: {self.scenario.partner_values[item]} points each")
-        lines.append("")
 
         if self.history:
             lines.append("Dialogue so far:")
             for turn in self.history:
                 speaker = "Partner" if turn.agent == "learner" else "You"
-                lines.append(f"  {speaker}: {turn.talk}")
+                lines.append(f"{speaker}: {turn.talk}")
             lines.append("")
 
         lines.append(
-            "Respond using XML tags: <thought>reasoning</thought> "
-            "<talk>your message</talk> "
-            '<action>{"type": "...", ...allocations}</action>'
+            "Produce your next negotiation turn using the following XML format:\n"
+            "<thought>your internal reasoning (point arithmetic, partner priority "
+            "estimate, justification)</thought>\n"
+            "<talk>your natural language response to your partner</talk>\n"
+            '<action>{"type": "offer"|"counter"|"accept"|"reject", '
+            "...item allocations for yourself}</action>"
         )
         return "\n".join(lines)
 

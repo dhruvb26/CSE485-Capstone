@@ -12,6 +12,7 @@ venv/
 
 # Logs
 runs/
+logs/
 .env
 
 # DS-Store

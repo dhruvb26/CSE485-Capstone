@@ -14,7 +14,6 @@ import argparse
 import logging
 from pathlib import Path
 
-import torch
 from datasets import Dataset
 from transformers import (
     AutoModelForSequenceClassification,
@@ -120,7 +119,7 @@ def train(data_path: str, out_dir: str, epochs: int, batch_size: int, lr: float)
         logging_steps=20,
         save_strategy="epoch",
         save_total_limit=2,
-        fp16=torch.cuda.is_available(),
+        fp16=False,
         report_to="none",
     )
 
