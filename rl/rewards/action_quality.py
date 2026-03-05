@@ -20,10 +20,12 @@ def action_quality_reward(
 ) -> float:
     """Return a scalar in roughly [-1, 1] reflecting action quality.
 
-    * ``accept`` on turn 0 (no prior offer exists) → strong penalty
-    * ``reject`` on turn 0 → moderate penalty
-    * ``offer``/``counter`` → scored by self-allocation ratio
-    * ``accept`` on later turns → small positive (negotiation concluded)
+    * ``accept`` on turn 0 (no prior offer exists) -> strong penalty
+    * ``reject`` on turn 0 -> moderate penalty
+    * ``offer``/``counter`` -> scored by self-allocation AND partner
+      fairness (deals that leave the partner with nothing are penalised
+      because they will never be accepted)
+    * ``accept`` on later turns -> small positive (negotiation concluded)
     """
     if not valid or action is None:
         return 0.0
@@ -46,15 +48,34 @@ def action_quality_reward(
             action.allocations.get(item, 0) * scenario.agent_values[item]
             for item in ITEMS
         )
+        partner_pts = sum(
+            (scenario.items[item] - action.allocations.get(item, 0))
+            * scenario.partner_values[item]
+            for item in ITEMS
+        )
+
         max_pts = scenario.agent_max_points
+        partner_max = scenario.partner_max_points
         if max_pts <= 0:
             return 0.1
 
         ratio = own_pts / max_pts
-        if ratio < 0.10:
-            return 0.1
-        if ratio > 0.90:
-            return 0.15
-        return 0.2 + 0.6 * min(ratio / 0.65, 1.0)
+        partner_ratio = partner_pts / partner_max if partner_max > 0 else 0.0
+
+        if ratio > 0.85:
+            base = -0.2
+        elif ratio < 0.10:
+            base = 0.1
+        else:
+            base = 0.2 + 0.6 * min(ratio / 0.65, 1.0)
+
+        if partner_ratio >= 0.30:
+            fairness = 0.2
+        elif partner_ratio >= 0.15:
+            fairness = 0.1
+        else:
+            fairness = -0.2
+
+        return base + fairness
 
     return 0.0

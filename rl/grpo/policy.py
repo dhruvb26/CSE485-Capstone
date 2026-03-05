@@ -10,6 +10,8 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+MAX_SEQ_LEN = 2048
+
 @torch.no_grad()
 def generate_candidates(
     model,
@@ -20,7 +22,7 @@ def generate_candidates(
     temperature: float,
 ) -> list[str]:
     """Sample *n_candidates* completions from the model for a given prompt."""
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN)
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
     outputs = model.generate(
@@ -30,6 +32,7 @@ def generate_candidates(
         temperature=max(temperature, 0.01),
         num_return_sequences=n_candidates,
         pad_token_id=tokenizer.eos_token_id,
+        repetition_penalty=1.15,
     )
 
     prompt_len = inputs["input_ids"].shape[1]
@@ -133,7 +136,7 @@ def policy_gradient_step(
     model.train()
     optimizer.zero_grad()
 
-    prompt_ids = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
+    prompt_ids = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN)
     prompt_len = prompt_ids["input_ids"].shape[1]
 
     for candidate, advantage in zip(candidates, advantages):
@@ -142,7 +145,7 @@ def policy_gradient_step(
 
         full_text = prompt + candidate
         inputs = tokenizer(
-            full_text, return_tensors="pt", truncation=True, max_length=1024
+            full_text, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN
         )
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
@@ -187,12 +190,12 @@ def episode_reinforce_step(
         prompt = turn_record["prompt"]
         response = turn_record["best_response"]
 
-        prompt_ids = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
+        prompt_ids = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN)
         prompt_len = prompt_ids["input_ids"].shape[1]
 
         full_text = prompt + response
         inputs = tokenizer(
-            full_text, return_tensors="pt", truncation=True, max_length=1024
+            full_text, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN
         )
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
 

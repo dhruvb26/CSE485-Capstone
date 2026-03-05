@@ -14,15 +14,6 @@ from rl.config import GRPOConfig
 logger = logging.getLogger(__name__)
 
 
-def device_map_is_cpu(device_map) -> bool:
-    """Return True if *device_map* routes the entire model to CPU."""
-    if isinstance(device_map, str):
-        return device_map == "cpu"
-    if isinstance(device_map, dict):
-        return bool(device_map) and all(v == "cpu" for v in device_map.values())
-    return False
-
-
 def load_model_and_tokenizer(
     cfg: GRPOConfig,
     device_map: dict | str = {"": 0},
@@ -32,15 +23,13 @@ def load_model_and_tokenizer(
 
     Args:
         device_map: Passed directly to ``from_pretrained``. Use ``{"": 0}`` /
-            ``{"": 1}`` to pin to a specific GPU, or ``{"": "cpu"}`` to force
-            CPU placement (single-GPU mode for the clone).
+            ``{"": 1}`` to pin to a specific GPU.
         gradient_checkpointing: Recompute activations during backprop to trade
             compute for VRAM. Enable for the learner; leave False for the clone.
     """
     t = cfg.training
-    on_gpu = not device_map_is_cpu(device_map)
     quant_config = None
-    if t.load_in_4bit and on_gpu:
+    if t.load_in_4bit:
         quant_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
