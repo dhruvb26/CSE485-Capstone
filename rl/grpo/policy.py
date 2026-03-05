@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 MAX_SEQ_LEN = 2048
 
+
 @torch.no_grad()
 def generate_candidates(
     model: PreTrainedModel,
@@ -23,7 +24,9 @@ def generate_candidates(
     temperature: float,
 ) -> list[str]:
     """Sample *n_candidates* completions from the model for a given prompt."""
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN)
+    inputs = tokenizer(
+        prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN
+    )
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
     outputs = model.generate(
@@ -44,10 +47,16 @@ def generate_candidates(
     return candidates
 
 
-def clone_generate(model: PreTrainedModel, tokenizer: PreTrainedTokenizerBase, prompt: str, max_new_tokens: int) -> str:
+def clone_generate(
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    prompt: str,
+    max_new_tokens: int,
+) -> str:
     """Generate a single response from the clone model."""
     candidates = generate_candidates(model, tokenizer, prompt, 1, max_new_tokens, 0.7)
     return candidates[0] if candidates else ""
+
 
 def compute_grpo_advantages(scores: list[float]) -> list[float]:
     """Normalise scores into GRPO advantages: A_i = (r_i - mean) / std."""
@@ -58,7 +67,10 @@ def compute_grpo_advantages(scores: list[float]) -> list[float]:
     std = math.sqrt(var) if var > 0 else 1.0
     return [(s - mean) / std for s in scores]
 
-def _clip_and_step(model: PreTrainedModel, optimizer: torch.optim.Optimizer, label: str = "") -> None:
+
+def _clip_and_step(
+    model: PreTrainedModel, optimizer: torch.optim.Optimizer, label: str = ""
+) -> None:
     """Shared grad-norm clip + NaN guard + optimizer step."""
     raw_grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float("inf"))
     prefix = f"  {label} " if label else "  "
@@ -87,7 +99,7 @@ def _kl_weighted_loss(
     ref_device = next(ref_model.parameters()).device
 
     outputs = model(**inputs)
-    logits = outputs.logits[:, prompt_len - 1:-1, :]
+    logits = outputs.logits[:, prompt_len - 1 : -1, :]
     target_ids = inputs["input_ids"][:, prompt_len:]
 
     if target_ids.shape[1] == 0:
@@ -102,9 +114,13 @@ def _kl_weighted_loss(
         ref_kw = {"input_ids": ref_input_ids}
         if "attention_mask" in inputs:
             ref_kw["attention_mask"] = inputs["attention_mask"].to(ref_device)
-        ref_logits = ref_model(**ref_kw).logits[:, prompt_len - 1:-1, :].to(model.device)
+        ref_logits = (
+            ref_model(**ref_kw).logits[:, prompt_len - 1 : -1, :].to(model.device)
+        )
         ref_log_probs = torch.nn.functional.log_softmax(ref_logits, dim=-1)
-        ref_token_log_probs = ref_log_probs.gather(2, target_ids.unsqueeze(-1)).squeeze(-1)
+        ref_token_log_probs = ref_log_probs.gather(2, target_ids.unsqueeze(-1)).squeeze(
+            -1
+        )
         ref_mean_log_prob = ref_token_log_probs.mean()
 
     kl = mean_log_prob - ref_mean_log_prob
@@ -122,6 +138,7 @@ def policy_gradient_step(
     candidates: list[str],
     advantages: list[float],
     kl_coeff: float,
+    accumulate_only: bool = False,
 ) -> None:
     """Single GRPO policy gradient update step.
 
@@ -135,15 +152,21 @@ def policy_gradient_step(
     KL divergence is computed token-level against *ref_model* (frozen SFT
     checkpoint), keeping the policy from drifting too far from its starting
     point.
+
+    When *accumulate_only* is True, gradients are accumulated but the
+    optimizer step is deferred (caller manages zero_grad / step).
     """
     n_active = sum(1 for a in advantages if abs(a) >= 1e-8)
     if n_active == 0:
         return
 
     model.train()
-    optimizer.zero_grad()
+    if not accumulate_only:
+        optimizer.zero_grad()
 
-    prompt_ids = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN)
+    prompt_ids = tokenizer(
+        prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN
+    )
     prompt_len = prompt_ids["input_ids"].shape[1]
 
     for candidate, advantage in zip(candidates, advantages):
@@ -157,11 +180,17 @@ def policy_gradient_step(
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
         _kl_weighted_loss(
-            model, ref_model, tokenizer, inputs,
-            prompt_len, advantage, kl_coeff, n_active,
+            model,
+            ref_model,
+            inputs,
+            prompt_len,
+            advantage,
+            kl_coeff,
+            n_active,
         )
 
-    _clip_and_step(model, optimizer)
+    if not accumulate_only:
+        _clip_and_step(model, optimizer)
 
 
 def episode_reinforce_step(
@@ -173,19 +202,24 @@ def episode_reinforce_step(
     ep_reward: float,
     baseline: float,
     kl_coeff: float,
+    accumulate_only: bool = False,
 ) -> None:
     """REINFORCE-style update using the episode-level terminal reward.
 
     For each learner turn that produced a chosen response, compute a
     policy gradient weighted by (ep_reward - baseline).  This feeds the
     terminal outcome signal back into the per-turn policy.
+
+    When *accumulate_only* is True, gradients are accumulated but the
+    optimizer step is deferred (caller manages zero_grad / step).
     """
     advantage = ep_reward - baseline
     if abs(advantage) < 1e-8:
         return
 
     model.train()
-    optimizer.zero_grad()
+    if not accumulate_only:
+        optimizer.zero_grad()
 
     n_turns = sum(1 for t in episode_turns if t.get("agent") == "learner")
     if n_turns == 0:
@@ -197,7 +231,9 @@ def episode_reinforce_step(
         prompt = turn_record["prompt"]
         response = turn_record["best_response"]
 
-        prompt_ids = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN)
+        prompt_ids = tokenizer(
+            prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQ_LEN
+        )
         prompt_len = prompt_ids["input_ids"].shape[1]
 
         full_text = prompt + response
@@ -207,8 +243,14 @@ def episode_reinforce_step(
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
         _kl_weighted_loss(
-            model, ref_model, tokenizer, inputs,
-            prompt_len, advantage, kl_coeff, n_turns,
+            model,
+            ref_model,
+            inputs,
+            prompt_len,
+            advantage,
+            kl_coeff,
+            n_turns,
         )
 
-    _clip_and_step(model, optimizer, label="episode reinforce")
+    if not accumulate_only:
+        _clip_and_step(model, optimizer, label="episode reinforce")
