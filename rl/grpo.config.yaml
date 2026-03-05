@@ -1,6 +1,6 @@
 grpo:
-  candidates_per_turn: 8
-  max_turns: 10
+  candidates_per_turn: 4
+  max_turns: 6
   clone_sync_interval: 100
   kl_coeff: 0.1
   terminal_lambda: 0.4
