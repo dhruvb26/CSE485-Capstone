@@ -1,7 +1,7 @@
 grpo:
   candidates_per_turn: 8
   max_turns: 10
-  clone_sync_interval: 300
+  clone_sync_interval: 100
   kl_coeff: 0.1
   terminal_lambda: 0.4
   walkaway_penalty: -0.2
@@ -14,14 +14,14 @@ grpo:
     alpha: 32
     dropout: 0.05
   training:
-    max_seq_length: 2048
+    max_seq_length: 1024
     load_in_4bit: true
     lr: 0.00001
     epochs: 1
     batch_size: 1
     grad_accum: 8
     warmup_ratio: 0.05
-    save_steps: 100
+    save_steps: 50
 
 reward:
   terminal_weight: 0.50
