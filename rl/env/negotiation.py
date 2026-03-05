@@ -92,19 +92,23 @@ class NegotiationEnv:
             return turn
 
         if action is not None and action.type == ActionType.ACCEPT:
+            if len(self.history) < 2:
+                turn.valid = False
+                if self.current_turn >= self.max_turns:
+                    self._done = True
+                return turn
+            prev = self.history[-2]
+            if prev.action is None or prev.action.type not in (
+                ActionType.OFFER, ActionType.COUNTER
+            ):
+                turn.valid = False
+                if self.current_turn >= self.max_turns:
+                    self._done = True
+                return turn
             self._done = True
-            if len(self.history) >= 2:
-                prev = self.history[-2]
-                if prev.action is not None and prev.action.type in (
-                    ActionType.OFFER, ActionType.COUNTER
-                ):
-                    self._deal_reached = True
-                    if agent == "learner":
-                        self._agent_deal_action = prev.action
-                        self._partner_deal_action = prev.action
-                    else:
-                        self._agent_deal_action = prev.action
-                        self._partner_deal_action = prev.action
+            self._deal_reached = True
+            self._agent_deal_action = prev.action
+            self._partner_deal_action = prev.action
             return turn
 
         if action is not None and action.type == ActionType.REJECT:
@@ -148,7 +152,7 @@ class NegotiationEnv:
             "You are negotiating with your campsite neighbor over extra supply "
             "of food, water, and firewood for your camping trip.",
             "",
-            f"Items available: 3 Food, 3 Water, 3 Firewood",
+            "Items available: 3 Food, 3 Water, 3 Firewood",
             (
                 f"Your point values: "
                 f"Food={vals['food']}pts, "
@@ -190,7 +194,7 @@ class NegotiationEnv:
             "of food, water, and firewood for your camping trip.",
             self.persona.system_prompt_suffix,
             "",
-            f"Items available: 3 Food, 3 Water, 3 Firewood",
+            "Items available: 3 Food, 3 Water, 3 Firewood",
             (
                 f"Your point values: "
                 f"Food={vals['food']}pts, "
