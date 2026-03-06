@@ -6,15 +6,14 @@ from rl.evaluate import print_run_summary
 from rl.handlers import (
     TASK_REGISTRY,
     CasinoDatasetHandler,
-    DNDDatasetHandler,
 )
 from rl.helpers import create_run_dir
 from rl.models import get_model
 
 logger = logging.getLogger(__name__)
 
-_SUFFIX_TO_DATASET = {"ca": "casino", "dnd": "dnd"}
-_SUFFIX_TO_AGENT = {"ca": "mturk_agent_1", "dnd": "YOU"}
+_SUFFIX_TO_DATASET = {"ca": "casino"}
+_SUFFIX_TO_AGENT = {"ca": "mturk_agent_1"}
 
 
 def run(cfg: TrainConfig) -> dict:
@@ -29,8 +28,6 @@ def run(cfg: TrainConfig) -> dict:
     handlers: dict[str, object] = {}
     if hasattr(cfg.data, "casino") and cfg.data.casino:
         handlers["ca"] = CasinoDatasetHandler(f"{base_dir}/{cfg.data.casino.test}")
-    if hasattr(cfg.data, "dnd") and cfg.data.dnd:
-        handlers["dnd"] = DNDDatasetHandler(f"{base_dir}/{cfg.data.dnd.test}")
 
     all_results: dict[str, dict] = {}
 

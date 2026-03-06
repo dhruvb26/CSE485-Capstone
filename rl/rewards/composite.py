@@ -9,13 +9,12 @@ from rl.rewards.action_quality import action_quality_reward
 from rl.rewards.arithmetic_reward import arithmetic_reward
 from rl.rewards.format_reward import format_reward
 from rl.rewards.partner_model import partner_model_reward
-from rl.rewards.strategy import StrategyClassifier, strategy_reward
 from rl.rewards.terminal import terminal_reward
 
 
 class CompositeReward:
-    """Weighted multi-source reward model with linear decay for format and
-    strategy components.
+    """Weighted multi-source reward model with linear decay for the format
+    component.
 
     All weights and thresholds are read from ``RewardConfig`` (YAML).
     """
@@ -29,13 +28,6 @@ class CompositeReward:
         self.config = config
         self.terminal_lambda = terminal_lambda
         self.walkaway_penalty = walkaway_penalty
-        self._classifier: StrategyClassifier | None = None
-
-    @property
-    def classifier(self) -> StrategyClassifier:
-        if self._classifier is None:
-            self._classifier = StrategyClassifier(self.config.strategy_classifier_path)
-        return self._classifier
 
     def _decayed_weight(self, base_weight: float, episode: int) -> float:
         """Linearly decay *base_weight* to 0 over the decay window."""
@@ -49,12 +41,7 @@ class CompositeReward:
         env: NegotiationEnv,
         episode: int,
     ) -> float:
-        """Score a completed negotiation episode.
-
-        Returns a single scalar reward that is the weighted sum of all
-        five components, with format and strategy weights decayed
-        according to the current episode number.
-        """
+        """Score a completed negotiation episode."""
         r_terminal = terminal_reward(
             agent_pts=env.agent_points(),
             partner_pts=env.partner_points(),
@@ -77,12 +64,6 @@ class CompositeReward:
         ]
         r_arithmetic = sum(arith_scores) / len(arith_scores)
 
-        strat_scores = [
-            strategy_reward(t.talk, i, self.classifier)
-            for i, t in enumerate(learner_turns)
-        ]
-        r_strategy = sum(strat_scores) / len(strat_scores)
-
         pm_scores = [
             partner_model_reward(t.thought, env.scenario)
             for t in learner_turns
@@ -98,7 +79,6 @@ class CompositeReward:
         w_terminal = self.config.terminal_weight
         w_format = self._decayed_weight(self.config.format_weight, episode)
         w_arithmetic = self.config.arithmetic_weight
-        w_strategy = self._decayed_weight(self.config.strategy_weight, episode)
         w_partner = self.config.partner_model_weight
         w_action = self.config.action_quality_weight
 
@@ -106,7 +86,6 @@ class CompositeReward:
             w_terminal * r_terminal
             + w_format * r_format
             + w_arithmetic * r_arithmetic
-            + w_strategy * r_strategy
             + w_partner * r_partner
             + w_action * r_action
         )
@@ -122,7 +101,6 @@ class CompositeReward:
         """Score a single learner turn (used for per-candidate scoring in GRPO)."""
         r_format = format_reward(turn.raw_output)
         r_arithmetic = arithmetic_reward(turn.thought, scenario.agent_values)
-        r_strategy = strategy_reward(turn.talk, turn_index, self.classifier)
         r_partner = partner_model_reward(turn.thought, scenario)
         r_action = action_quality_reward(
             turn.action, scenario, turn_index, turn.valid,
@@ -130,14 +108,12 @@ class CompositeReward:
 
         w_format = self._decayed_weight(self.config.format_weight, episode)
         w_arithmetic = self.config.arithmetic_weight
-        w_strategy = self._decayed_weight(self.config.strategy_weight, episode)
         w_partner = self.config.partner_model_weight
         w_action = self.config.action_quality_weight
 
         return (
             w_format * r_format
             + w_arithmetic * r_arithmetic
-            + w_strategy * r_strategy
             + w_partner * r_partner
             + w_action * r_action
         )

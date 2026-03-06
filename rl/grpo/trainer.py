@@ -207,7 +207,6 @@ def grpo_train(
                     "terminal_weight": reward_cfg.terminal_weight,
                     "format_weight": reward_cfg.format_weight,
                     "arithmetic_weight": reward_cfg.arithmetic_weight,
-                    "strategy_weight": reward_cfg.strategy_weight,
                     "partner_model_weight": reward_cfg.partner_model_weight,
                     "action_quality_weight": reward_cfg.action_quality_weight,
                 },

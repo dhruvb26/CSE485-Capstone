@@ -253,7 +253,7 @@ class BaseTaskHandler(ABC):
 
         if run_dir is not None:
             suffix = self.task_id.rsplit("_", 1)[-1]
-            dataset = {"ca": "ca", "dnd": "dnd", "cl": "cl"}.get(suffix, suffix)
+            dataset = {"ca": "ca"}.get(suffix, suffix)
             task_log_dir = run_dir / dataset / self.task_id
             task_log_dir.mkdir(parents=True, exist_ok=True)
             model_id = getattr(model, "model_id", "model")

@@ -48,7 +48,6 @@ class DatasetPaths:
 class DataConfig:
     base_dir: str
     casino: DatasetPaths
-    dnd: DatasetPaths
 
 
 @dataclass
@@ -77,7 +76,6 @@ class TrainConfig:
             data=DataConfig(
                 base_dir=d["data"]["base_dir"],
                 casino=DatasetPaths(**d["data"]["casino"]),
-                dnd=DatasetPaths(**d["data"]["dnd"]),
             ),
             eval=EvalConfig(
                 n_instances=d["eval"]["n_instances"],
@@ -183,11 +181,9 @@ class RewardConfig:
     terminal_weight: float
     format_weight: float
     arithmetic_weight: float
-    strategy_weight: float
     partner_model_weight: float
     action_quality_weight: float
     decay_window: int
-    strategy_classifier_path: str
 
     @classmethod
     def from_dict(cls, d: dict) -> RewardConfig:
@@ -195,11 +191,9 @@ class RewardConfig:
             terminal_weight=d["terminal_weight"],
             format_weight=d["format_weight"],
             arithmetic_weight=d["arithmetic_weight"],
-            strategy_weight=d["strategy_weight"],
             partner_model_weight=d["partner_model_weight"],
             action_quality_weight=d.get("action_quality_weight", 0.20),
             decay_window=d["decay_window"],
-            strategy_classifier_path=d["strategy_classifier_path"],
         )
 
 

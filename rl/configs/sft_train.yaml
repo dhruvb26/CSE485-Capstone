@@ -1,8 +1,6 @@
 data: data/sft/train.jsonl
 
 # Only tasks listed here are trained on. Set to null to include all.
-# Phase 1 (format SFT): sta_* only — lock in schema compliance before adding task reasoning.
-# Once valid/total ≈ 1.0 on sta_* eval, add mid_* tasks for phase 2.
 tasks: null
 
 # Base pretrained model (HuggingFace ID or local path). Always required.
@@ -13,10 +11,9 @@ adapter_path: null
 out_dir: checkpoints/sft-tuned
 seed: 42
 
-# Lower rank is sufficient for format-only SFT; bump to 64 for the full mid_* training run.
 lora:
-  rank: 64
-  alpha: 32
+  rank: 16
+  alpha: 16
   dropout: 0.05
 
 training:
