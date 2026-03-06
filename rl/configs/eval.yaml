@@ -26,9 +26,6 @@ data:
   dnd:
     test: dnd/dnd.test.csv
     train: dnd/dnd.train.csv
-  craigslist:
-    test: formatted/craigslist_bargains_alpaca.jsonl
-    train: formatted/craigslist_bargains_alpaca.jsonl
 
 eval:
   n_instances: 200

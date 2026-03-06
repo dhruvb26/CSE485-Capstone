@@ -1,4 +1,4 @@
-"""Turn-level SFT generators for CaSiNo, DND, and CraigslistBargain.
+"""Turn-level SFT generators for CaSiNo and DND.
 
 Each generator walks through real dialogues turn-by-turn and produces
 rows whose completion uses XML-delimited thought/talk fields with a JSON
@@ -16,7 +16,6 @@ and dataset annotations.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 
@@ -27,7 +26,6 @@ from rl.handlers.casino.dataset import (
     _META_TURNS,
     sanitize_unicode,
 )
-from rl.handlers.craigslist.dataset import extract_prices, infer_action
 
 logger = logging.getLogger(__name__)
 
@@ -56,25 +54,11 @@ _DND_SYSTEM = (
     "Max possible points: {max_pts}pts"
 )
 
-_CL_SYSTEM = (
-    "You are the {role} in a price negotiation on an online marketplace.\n\n"
-    "Product: {product_name}\n"
-    "Listing price: ${listing_price:.2f}\n"
-    "Category: {category}"
-)
-
 _TURN_INSTRUCTION = (
     "\n\nProduce your next negotiation turn using the following XML format:\n"
     "<thought>your internal reasoning (point arithmetic, partner priority estimate, justification)</thought>\n"
     "<talk>your natural language response to your partner</talk>\n"
     '<action>{"type": "offer"|"counter"|"accept"|"reject", ...item allocations for yourself}</action>'
-)
-
-_CL_TURN_INSTRUCTION = (
-    "\n\nProduce your next negotiation turn using the following XML format:\n"
-    "<thought>your internal reasoning (price analysis and strategy)</thought>\n"
-    "<talk>your natural language response to your partner</talk>\n"
-    '<action>{"type": "propose"|"counter"|"accept"|"reject", "price": <your proposed price>}</action>'
 )
 
 def _parse_quantities(
@@ -407,113 +391,7 @@ def generate_turns_dnd(instances: list[dict]) -> list[dict]:
     return rows
 
 
-_PRICE_RE = re.compile(r"\$\s*([\d,]+(?:\.\d+)?)")
-
-
-def _interleave_cl(
-    agent_texts: list[str],
-    opp_texts: list[str],
-    agent_role: str,
-    opp_role: str,
-) -> list[dict]:
-    """Reconstruct chronological turn order from separate agent/opponent lists."""
-    first_role, first = opp_role, opp_texts
-    second_role, second = agent_role, agent_texts
-
-    turns: list[dict] = []
-    for i in range(max(len(first), len(second))):
-        if i < len(first):
-            turns.append({"role": first_role, "text": first[i]})
-        if i < len(second):
-            turns.append({"role": second_role, "text": second[i]})
-    return turns
-
-
-def _strip_role_prefix(line: str) -> str:
-    colon = line.find(":")
-    return line[colon + 1:].strip() if colon > 0 else line.strip()
-
-
-def generate_turns_cl(instances: list[dict]) -> list[dict]:
-    rows: list[dict] = []
-
-    for inst in instances:
-        meta = inst.get("metadata", {})
-        if not isinstance(meta, dict):
-            meta = json.loads(meta) if isinstance(meta, str) else {}
-
-        parsed_info = inst.get("_parsed", {})
-        agent_role = parsed_info.get("role", meta.get("perspective", "buyer"))
-        opp_role = "seller" if agent_role == "buyer" else "buyer"
-        listing_price = parsed_info.get("listing_price", 0.0)
-        product = parsed_info.get("product_name", "unknown")
-        category = parsed_info.get("category", "unknown")
-        successful = meta.get("successful", False)
-
-        if listing_price <= 0:
-            continue
-
-        system = _CL_SYSTEM.format(
-            role=agent_role, product_name=product,
-            listing_price=listing_price, category=category,
-        )
-
-        agent_raw = [ln.strip() for ln in inst.get("output", "").split("\n") if ln.strip()]
-        opp_raw = [ln.strip() for ln in inst.get("input", "").split("\n") if ln.strip()]
-        agent_texts = [_strip_role_prefix(ln) for ln in agent_raw]
-        opp_texts = [_strip_role_prefix(ln) for ln in opp_raw]
-        chrono = _interleave_cl(agent_texts, opp_texts, agent_role, opp_role)
-
-        for idx, turn in enumerate(chrono):
-            if turn["role"] != agent_role:
-                continue
-            if idx < 1:
-                continue
-
-            text = turn["text"]
-            is_last = idx == len(chrono) - 1
-            atype = infer_action(text, is_last, successful)
-
-            prices = extract_prices(text)
-            price = prices[-1] if prices else None
-
-            if atype in ("accept", "reject"):
-                action: dict = {"type": atype}
-            elif price is not None:
-                action = {"type": atype, "price": price}
-            else:
-                continue
-
-            hist_lines = [
-                f"{'You' if t['role'] == agent_role else 'Partner'}: {t['text']}"
-                for t in chrono[:idx]
-            ]
-            hist = "\n".join(hist_lines) or "(no dialogue yet)"
-
-            if price is not None:
-                pct = price / listing_price
-                thought = (
-                    f"Listing price: ${listing_price:.2f}. "
-                    f"My proposed price: ${price:.2f} ({pct:.0%} of listing). "
-                    f"Decision: {atype}."
-                )
-            else:
-                thought = f"Decision: {atype}."
-
-            rows.append({
-                "task": "turn_cl",
-                "prompt": system + f"\n\nDialogue so far:\n{hist}" + _CL_TURN_INSTRUCTION,
-                "talk": text,
-                "action": action,
-                "det_thought": thought,
-                "strategy_label": None,
-            })
-
-    return rows
-
-
 TURN_GENERATORS: dict[str, type] = {
     "turn_ca": generate_turns_ca,
     "turn_dnd": generate_turns_dnd,
-    "turn_cl": generate_turns_cl,
 }
