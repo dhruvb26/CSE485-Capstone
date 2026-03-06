@@ -23,9 +23,6 @@ data:
   casino:
     test: casino/ca.test.csv
     train: casino/ca.train.csv
-  dnd:
-    test: dnd/dnd.test.csv
-    train: dnd/dnd.train.csv
 
 eval:
   n_instances: 200

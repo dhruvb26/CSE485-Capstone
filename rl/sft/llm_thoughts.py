@@ -1,6 +1,14 @@
+"""Async LLM thought generation for negotiation turn SFT data.
+
+Given a turn row (prompt, talk, action, strategy_label), calls an external
+LLM to produce a concise internal reasoning thought that explains the
+negotiation logic behind the turn.
+"""
+
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -12,15 +20,6 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
-class _ThoughtResponse(BaseModel):
-    reasoning: str = Field(
-        description=(
-            "A concise step-by-step chain of reasoning (1-3 sentences) that explains how to "
-            "arrive at the correct answer. Plain prose only — no JSON, no XML tags, no answer repetition."
-        )
-    )
-
-
 class _TurnThoughtResponse(BaseModel):
     thought: str = Field(
         description=(
@@ -30,20 +29,6 @@ class _TurnThoughtResponse(BaseModel):
         )
     )
 
-
-_EVAL_SYSTEM = (
-    "You are a reasoning assistant for negotiation tasks. "
-    "You will be given a task prompt and the correct answer. "
-)
-
-_EVAL_USER = """\
-Task prompt:
-
-{prompt}
-
-Correct answer (JSON): {answer_json}
-
-Explain the reasoning that leads to this answer."""
 
 _TURN_SYSTEM = (
     "You are generating internal reasoning for a negotiation agent. "
@@ -71,49 +56,8 @@ def _sanitize(text: str) -> str:
     return re.sub(r"[\uD800-\uDFFF]", "", text).strip()
 
 
-# ===================================================================
-# Synchronous generator (kept for backward compat)
-# ===================================================================
-
-
-class LLMThoughtGenerator:
-    def __init__(self, model: str, api_key_env: str):
-        from openai import OpenAI
-
-        api_key = os.environ.get(api_key_env)
-        if not api_key:
-            raise EnvironmentError(f"Environment variable '{api_key_env}' is not set.")
-        self.client = OpenAI(api_key=api_key)
-        self.model = model
-
-    def generate(
-        self, prompt: str, answer_json: str, det_thought: str
-    ) -> tuple[str, str]:
-        user_msg = _EVAL_USER.format(prompt=prompt, answer_json=answer_json)
-        try:
-            resp = self.client.beta.chat.completions.parse(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": _EVAL_SYSTEM},
-                    {"role": "user", "content": user_msg},
-                ],
-                response_format=_ThoughtResponse,
-                temperature=0.7,
-                max_completion_tokens=2000,
-            )
-            parsed = resp.choices[0].message.parsed
-            if parsed is None:
-                raise ValueError("Model refused to respond")
-            return _sanitize(parsed.reasoning), "llm"
-        except Exception as exc:
-            logger.warning(
-                "LLM thought generation failed (%s); using deterministic.", exc
-            )
-            return det_thought, "deterministic"
-
-
 class AsyncLLMThoughtGenerator:
-    """Generates thoughts for many rows in parallel using AsyncOpenAI."""
+    """Generates turn-level thoughts in parallel using AsyncOpenAI."""
 
     def __init__(
         self,
@@ -131,50 +75,35 @@ class AsyncLLMThoughtGenerator:
         self.sem = asyncio.Semaphore(max_concurrency)
 
     async def _generate_one(self, row: dict) -> tuple[str, str]:
-        """Generate a single thought, returning (thought_text, source)."""
-        is_turn = "talk" in row
-
-        if is_turn:
-            import json
-
-            strat = row.get("strategy_label")
-            strategy_line = f"\nStrategy annotation: {strat}" if strat else ""
-            user_msg = _TURN_USER.format(
-                prompt=row["prompt"],
-                talk=row["talk"],
-                action_json=json.dumps(row["action"]),
-                strategy_line=strategy_line,
-            )
-            system_msg = _TURN_SYSTEM
-            response_fmt = _TurnThoughtResponse
-        else:
-            user_msg = _EVAL_USER.format(
-                prompt=row["prompt"],
-                answer_json=row["answer_json"],
-            )
-            system_msg = _EVAL_SYSTEM
-            response_fmt = _ThoughtResponse
+        """Generate a single turn thought, returning (thought_text, source)."""
+        strat = row.get("strategy_label")
+        strategy_line = f"\nStrategy annotation: {strat}" if strat else ""
+        user_msg = _TURN_USER.format(
+            prompt=row["prompt"],
+            talk=row["talk"],
+            action_json=json.dumps(row["action"]),
+            strategy_line=strategy_line,
+        )
 
         async with self.sem:
             try:
                 resp = await self.client.beta.chat.completions.parse(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": system_msg},
+                        {"role": "system", "content": _TURN_SYSTEM},
                         {"role": "user", "content": user_msg},
                     ],
-                    response_format=response_fmt,
+                    response_format=_TurnThoughtResponse,
                     temperature=0.7,
-                    max_completion_tokens=2000,
+                    max_completion_tokens=2200,
                 )
                 parsed = resp.choices[0].message.parsed
                 if parsed is None:
                     raise ValueError("Model refused to respond")
-                text = parsed.thought if is_turn else parsed.reasoning
-                return _sanitize(text), "llm"
+                return _sanitize(parsed.thought), "llm"
             except Exception as exc:
-                logger.warning("LLM thought failed (%s); using deterministic.", exc)
-                return row["det_thought"], "deterministic"
+                logger.warning("LLM thought failed (%s); skipping row.", exc)
+                return "", "failed"
 
     async def generate_batch(
         self,

@@ -13,8 +13,8 @@ grpo:
   resume_from: null
   episode_weight: 3.0
   lora:
-    rank: 64
-    alpha: 64
+    rank: 16
+    alpha: 16
     dropout: 0.05
   training:
     max_seq_length: 2048
@@ -28,8 +28,6 @@ reward:
   terminal_weight: 0.50
   format_weight: 0.15
   arithmetic_weight: 0.15
-  strategy_weight: 0.10
   partner_model_weight: 0.10
   action_quality_weight: 0.20
   decay_window: 1000
-  strategy_classifier_path: checkpoints/strategy-classifier
