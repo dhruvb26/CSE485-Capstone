@@ -43,5 +43,5 @@ class Action:
     @classmethod
     def from_dict(cls, d: dict) -> Action:
         action_type = ActionType(d["type"])
-        allocs = {k: int(v) for k, v in d.items() if k != "type"}
+        allocs = {k: int(v) for k, v in d.items() if k != "type" and v is not None}
         return cls(type=action_type, allocations=allocs)
