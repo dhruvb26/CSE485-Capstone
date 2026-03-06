@@ -2,7 +2,7 @@ out: data/sft/train.jsonl
 seed: 42
 dedup: true
 
-max_total: 700
+max_total: 2000
 
 llm_model: gpt-4.1-mini-2025-04-14
 llm_api_key_env: OPENAI_API_KEY
@@ -14,21 +14,15 @@ datasets:
     path: data/casino/ca.train.csv
     tasks:
       - turn_ca
-  # dnd:
-  #   path: data/dnd/dnd.train.csv
-  #   tasks:
-  #     - turn_dnd
-  craigslist:
-    path: data/formatted/craigslist_bargains_alpaca.jsonl
+  dnd:
+    path: data/dnd/dnd.train.csv
     tasks:
-      - turn_cl
+      - turn_dnd
 
 llm_ratios:
   turn_ca: 1.0
-  # turn_dnd: 1.0
-  turn_cl: 1.0
+  turn_dnd: 1.0
 
 weights:
   turn_ca: 3.0
-  # turn_dnd: 2.0
-  turn_cl: 2.0
+  turn_dnd: 2.0

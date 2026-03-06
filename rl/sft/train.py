@@ -82,7 +82,12 @@ def tokenise_dataset(rows: list[dict], tokenizer, max_seq_length: int):
             return_tensors=None,
         )["input_ids"]
 
-        prompt_len = len(prompt_ids)
+        prompt_len = 0
+        for i, (p, f) in enumerate(zip(prompt_ids, full_ids)):
+            if p == f:
+                prompt_len = i + 1
+            else:
+                break
         labels = ([-100] * prompt_len + full_ids[prompt_len:])[:max_seq_length]
         return {"input_ids": full_ids[:max_seq_length], "labels": labels}
 

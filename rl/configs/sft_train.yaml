@@ -6,7 +6,7 @@ data: data/sft/train.jsonl
 tasks: null
 
 # Base pretrained model (HuggingFace ID or local path). Always required.
-model_name: unsloth/mistral-7b-instruct-v0.3
+model_name: Qwen/Qwen2.5-7B-Instruct
 # Path to an existing LoRA adapter to resume training from. Set to null for a fresh LoRA.
 # When set, model_name must be the matching base model used when that adapter was created.
 adapter_path: null

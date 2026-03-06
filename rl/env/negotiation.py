@@ -202,7 +202,7 @@ class NegotiationEnv:
             lines.append("")
 
         lines.append(format_spec)
-        return "[INST] " + "\n".join(lines) + " [/INST]"
+        return "<|im_start|>user\n" + "\n".join(lines) + "<|im_end|>\n<|im_start|>assistant\n"
 
     def build_clone_prompt(self) -> str:
         """Build the prompt for the clone opponent's next turn.
@@ -248,7 +248,7 @@ class NegotiationEnv:
             lines.append("")
 
         lines.append(format_spec)
-        return "[INST] " + "\n".join(lines) + " [/INST]"
+        return "<|im_start|>user\n" + "\n".join(lines) + "<|im_end|>\n<|im_start|>assistant\n"
 
 
 def _parse_agent_output(
