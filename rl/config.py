@@ -154,6 +154,7 @@ class GRPOConfig:
     temperature: float = 1.0
     resume_from: str | None = None
     episode_weight: float = 1.0
+    asymmetric_scenarios: bool = True
 
     @classmethod
     def from_dict(cls, d: dict) -> GRPOConfig:
@@ -173,6 +174,7 @@ class GRPOConfig:
             temperature=d.get("temperature", 1.0),
             resume_from=d.get("resume_from"),
             episode_weight=d.get("episode_weight", 1.0),
+            asymmetric_scenarios=d.get("asymmetric_scenarios", True),
         )
 
 

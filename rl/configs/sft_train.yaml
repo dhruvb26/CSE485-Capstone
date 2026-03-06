@@ -1,4 +1,4 @@
-data: data/sft/train.jsonl
+data: data/sft/train_hindsight.jsonl
 
 # Only tasks listed here are trained on. Set to null to include all.
 tasks: null

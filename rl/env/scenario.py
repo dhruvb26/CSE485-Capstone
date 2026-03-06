@@ -79,3 +79,32 @@ def sample_scenario(rng: random.Random) -> Scenario:
         agent_values=agent_values,
         partner_values=partner_values,
     )
+
+
+_ALL_PERMS = [
+    (3, 4, 5), (3, 5, 4), (4, 3, 5), (4, 5, 3), (5, 3, 4), (5, 4, 3),
+]
+
+
+def sample_asymmetric_scenario(rng: random.Random) -> Scenario:
+    """Sample a scenario where the agents' top-priority items differ.
+
+    The agent gets a random permutation of (3, 4, 5).  The partner's
+    permutation is sampled from the 4 (out of 6) permutations whose
+    argmax differs from the agent's — guaranteeing complementary interests
+    and a non-zero zone of possible agreement.
+    """
+    items = {item: UNITS_PER_ITEM for item in ITEMS}
+
+    agent_perm = list(POINT_VALUES)
+    rng.shuffle(agent_perm)
+    agent_top_idx = agent_perm.index(max(POINT_VALUES))
+
+    valid = [p for p in _ALL_PERMS if p.index(max(POINT_VALUES)) != agent_top_idx]
+    partner_perm = list(rng.choice(valid))
+
+    return Scenario(
+        items=items,
+        agent_values=dict(zip(ITEMS, agent_perm)),
+        partner_values=dict(zip(ITEMS, partner_perm)),
+    )

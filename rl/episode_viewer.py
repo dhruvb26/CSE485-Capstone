@@ -1,7 +1,10 @@
 import json
+import math
 import re
+from collections import Counter
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 RUNS_DIR = Path("runs")
@@ -199,6 +202,145 @@ def render_turn(turn: dict) -> None:
                     adv = f"  adv={advantages[i]:+.3f}" if i < len(advantages) else ""
                     st.markdown(f"`[{i}]` score={s:.3f}{adv}{marker}  \n> {c_talk}")
 
+_NEGOTIATION_ITEMS = ("food", "water", "firewood")
+
+
+def _thought_char_len(text: str) -> int:
+    return len(extract_xml(text, "thought"))
+
+
+def _action_entropy(candidates: list[str]) -> float:
+    """Shannon entropy (bits) over unique <action> strings across candidates."""
+    actions = [extract_xml(c, "action") for c in candidates]
+    n = len(actions)
+    if n <= 1:
+        return 0.0
+    counts = Counter(actions)
+    ent = 0.0
+    for count in counts.values():
+        p = count / n
+        if p > 0:
+            ent -= p * math.log2(p)
+    return ent
+
+
+def _partner_inference_hit(thought: str, partner_values: dict) -> float:
+    """1.0 if the thought correctly names the partner's top-priority item."""
+    if not partner_values:
+        return 0.0
+    true_top = max(_NEGOTIATION_ITEMS, key=lambda i: partner_values.get(i, 0))
+    lower = thought.lower()
+    for item in _NEGOTIATION_ITEMS:
+        patterns = [
+            rf"partner.*(?:highest|most|top).*{item}",
+            rf"{item}.*partner.*(?:highest|most|top)",
+            rf"partner.*priority.*{item}",
+        ]
+        for pat in patterns:
+            if re.search(pat, lower):
+                return 1.0 if item == true_top else 0.0
+    return 0.0
+
+
+@st.cache_data(show_spinner="Computing run metrics...")
+def compute_run_metrics(run_episodes_dir: str) -> pd.DataFrame:
+    """Load every episode in a run and compute the three monitoring signals."""
+    ep_dir = Path(run_episodes_dir)
+    ep_files = sorted(ep_dir.glob("ep_*.jsonl"))
+
+    rows: list[dict] = []
+    for ep_file in ep_files:
+        turns, summary = load_episode(ep_file)
+        ep_num = int(ep_file.stem.split("_")[1])
+
+        partner_vals: dict = {}
+        reward = 0.0
+        deal = False
+        if summary:
+            sc = summary.get("scenario", {})
+            partner_vals = sc.get("partner_values", {})
+            reward = summary.get("reward", 0.0)
+            deal = bool(summary.get("deal"))
+
+        learner_turns = [t for t in turns if t.get("agent") == "learner"]
+
+        thought_lens: list[int] = []
+        for t in learner_turns:
+            for c in t.get("candidates", []):
+                thought_lens.append(_thought_char_len(c))
+        avg_thought_len = sum(thought_lens) / len(thought_lens) if thought_lens else 0
+
+        partner_hits: list[float] = []
+        for t in learner_turns:
+            resp = t.get("best_response", "")
+            thought = extract_xml(resp, "thought")
+            if thought and partner_vals:
+                partner_hits.append(_partner_inference_hit(thought, partner_vals))
+        avg_partner_acc = (
+            sum(partner_hits) / len(partner_hits) if partner_hits else 0
+        )
+
+        entropies: list[float] = []
+        for t in learner_turns:
+            cands = t.get("candidates", [])
+            if len(cands) > 1:
+                entropies.append(_action_entropy(cands))
+        avg_entropy = sum(entropies) / len(entropies) if entropies else 0
+
+        rows.append(
+            {
+                "episode": ep_num,
+                "thought_length": avg_thought_len,
+                "partner_accuracy": avg_partner_acc,
+                "action_entropy": avg_entropy,
+                "reward": reward,
+                "deal": deal,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def render_training_metrics(metrics: pd.DataFrame) -> None:
+    if metrics.empty:
+        st.info("No episodes found for this run.")
+        return
+
+    st.markdown("### :material/monitoring: Thought Trace Length")
+    st.caption(
+        "Average character count of <thought> across all candidates per episode. "
+        "A monotonic decline signals the Echo Trap — reasoning is collapsing."
+    )
+    st.line_chart(metrics, x="episode", y="thought_length", color="#5B8DEF")
+
+    st.markdown("### :material/psychology: Partner Inference Accuracy")
+    st.caption(
+        "Fraction of learner turns where the thought correctly identifies "
+        "the partner's top-priority item. Flat or declining while reward rises "
+        "= reward-blind strategy improvement."
+    )
+    st.line_chart(metrics, x="episode", y="partner_accuracy", color="#E87461")
+
+    st.markdown("### :material/shuffle: Action Entropy")
+    st.caption(
+        "Shannon entropy (bits) across the 8 candidate actions per turn. "
+        "Near-zero = all candidates collapsed to the same action (self-play collapse)."
+    )
+    st.line_chart(metrics, x="episode", y="action_entropy", color="#6BC5A0")
+
+    st.divider()
+    st.markdown("### :material/finance: Reward & Deal Rate")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.line_chart(metrics, x="episode", y="reward", color="#5B8DEF")
+    with col2:
+        rolling = metrics.set_index("episode")["deal"].rolling(
+            min(20, len(metrics)), min_periods=1
+        ).mean().reset_index()
+        rolling.columns = ["episode", "deal_rate"]
+        st.line_chart(rolling, x="episode", y="deal_rate", color="#E87461")
+
+
 st.set_page_config(
     page_title="Episode Viewer", page_icon=":material/insights:", layout="wide"
 )
@@ -238,13 +380,19 @@ ep_path = run_path / f"{ep_choice}.jsonl"
 turns, summary = load_episode(ep_path)
 render_intro()
 
-if summary:
-    render_summary(summary)
+tab_detail, tab_metrics = st.tabs(
+    [":material/forum: Episode Detail", ":material/monitoring: Training Metrics"]
+)
 
-render_scenario(summary, turns)
+with tab_detail:
+    if summary:
+        render_summary(summary)
+    render_scenario(summary, turns)
+    st.divider()
+    st.markdown("### :material/forum: Dialogue")
+    for turn in turns:
+        render_turn(turn)
 
-st.divider()
-st.markdown("### :material/forum: Dialogue")
-
-for turn in turns:
-    render_turn(turn)
+with tab_metrics:
+    metrics_df = compute_run_metrics(str(run_path))
+    render_training_metrics(metrics_df)
