@@ -19,8 +19,8 @@ lora:
 training:
   max_seq_length: 2048
   load_in_4bit: true
-  lr: 0.0002
-  epochs: 2
+  lr: 0.00005
+  epochs: 1
   batch_size: 4
   grad_accum: 4
   warmup_ratio: 0.05
