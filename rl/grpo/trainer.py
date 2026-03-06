@@ -97,7 +97,7 @@ def grpo_train(
     episodes_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Run directory: %s", run_dir.resolve())
 
-    n_episodes = 50  # for testing
+    n_episodes = 10  # for testing
     max_new_tokens = 512
     temperature = grpo_cfg.temperature
 
