@@ -11,9 +11,7 @@ import yaml
 from tqdm.auto import tqdm
 
 from rl.handlers.casino.dataset import CasinoDatasetHandler
-from rl.handlers.craigslist.dataset import CraigslistDatasetHandler
 from rl.handlers.dnd.dataset import DNDDatasetHandler
-from rl.sft.cl_generators import CL_TASK_GENERATORS
 from rl.sft.dnd_generators import DND_TASK_GENERATORS
 from rl.sft.llm_thoughts import AsyncLLMThoughtGenerator
 from rl.sft.task_generators import TASK_GENERATORS as CA_TASK_GENERATORS
@@ -24,7 +22,6 @@ logger = logging.getLogger(__name__)
 ALL_TASK_GENERATORS = {
     **CA_TASK_GENERATORS,
     **DND_TASK_GENERATORS,
-    **CL_TASK_GENERATORS,
     **TURN_GENERATORS,
 }
 ALL_TASKS: list[str] = list(ALL_TASK_GENERATORS.keys())
@@ -34,7 +31,6 @@ _THOUGHT_TAG = {"llm": "thought", "deterministic": "reasoning"}
 DATASET_HANDLERS: dict[str, type] = {
     "casino": CasinoDatasetHandler,
     "dnd": DNDDatasetHandler,
-    "craigslist": CraigslistDatasetHandler,
 }
 
 

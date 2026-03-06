@@ -49,7 +49,6 @@ class DataConfig:
     base_dir: str
     casino: DatasetPaths
     dnd: DatasetPaths
-    craigslist: DatasetPaths | None
 
 
 @dataclass
@@ -79,9 +78,6 @@ class TrainConfig:
                 base_dir=d["data"]["base_dir"],
                 casino=DatasetPaths(**d["data"]["casino"]),
                 dnd=DatasetPaths(**d["data"]["dnd"]),
-                craigslist=DatasetPaths(**d["data"]["craigslist"])
-                if "craigslist" in d["data"]
-                else None,
             ),
             eval=EvalConfig(
                 n_instances=d["eval"]["n_instances"],
