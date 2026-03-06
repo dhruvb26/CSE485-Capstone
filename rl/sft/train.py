@@ -160,7 +160,7 @@ def train(cfg: SFTTrainConfig, run_timestamp: str | None = None) -> None:
             r=cfg.lora.rank,
             lora_alpha=cfg.lora.alpha,
             lora_dropout=cfg.lora.dropout,
-            target_modules=["q_proj", "v_proj"],
+            target_modules=["q_proj", "v_proj", "down_proj"],
             bias="none",
             task_type="CAUSAL_LM",
         )
