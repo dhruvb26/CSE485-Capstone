@@ -77,16 +77,28 @@ def compute_grpo_advantages(scores: list[float]) -> list[float]:
 
 
 def _compute_prompt_len(tokenizer, prompt: str, full_text: str, max_length: int) -> int:
-    """Return the number of tokens in the full_text encoding that belong to the prompt."""
-    prompt_ids = tokenizer(prompt, truncation=True, max_length=max_length, return_tensors=None)["input_ids"]
-    full_ids = tokenizer(full_text, truncation=True, max_length=max_length, return_tensors=None)["input_ids"]
-    prompt_len = 0
-    for i, (p, f) in enumerate(zip(prompt_ids, full_ids)):
-        if p == f:
-            prompt_len = i + 1
-        else:
-            break
-    return min(prompt_len, len(full_ids) - 1)
+    """Return the number of tokens in the full_text encoding that belong to the prompt.
+
+    Uses ``return_offsets_mapping`` (fast tokenizers) to find the first token
+    whose character offset starts at or after the prompt/response boundary,
+    falling back to prompt-only tokenization length for slow tokenizers.
+    """
+    prompt_char_end = len(prompt)
+    try:
+        enc = tokenizer(
+            full_text, truncation=True, max_length=max_length,
+            return_offsets_mapping=True, return_tensors=None,
+        )
+        offsets = enc["offset_mapping"]
+        for i, (start, _end) in enumerate(offsets):
+            if start >= prompt_char_end:
+                return max(i, 1)
+        return len(enc["input_ids"])
+    except Exception:
+        prompt_ids = tokenizer(
+            prompt, truncation=True, max_length=max_length, return_tensors=None,
+        )["input_ids"]
+        return len(prompt_ids)
 
 
 def build_action_mask(
@@ -97,36 +109,50 @@ def build_action_mask(
 ) -> torch.Tensor | None:
     """Build a binary mask over response tokens that is 1 inside <action>…</action>.
 
+    Locates the action span via plain string search on the raw text, then
+    maps character offsets to token positions through the tokenizer's offset
+    mapping.  This is immune to the BPE-boundary mismatches that break the
+    earlier "tokenise the tag in isolation and search for that subsequence"
+    approach.
+
     Returns a 1-D bool tensor of shape (n_response_tokens,), or None if the
     action span cannot be located (caller should skip this candidate).
     """
-    full_ids = tokenizer(
-        full_text, truncation=True, max_length=max_length, return_tensors=None
-    )["input_ids"]
+    open_char = full_text.find(ACTION_OPEN_TAG)
+    close_char = full_text.find(ACTION_CLOSE_TAG)
+    if open_char == -1 or close_char == -1 or close_char <= open_char:
+        return None
+
+    content_start_char = open_char + len(ACTION_OPEN_TAG)
+    content_end_char = close_char
+
+    try:
+        enc = tokenizer(
+            full_text, truncation=True, max_length=max_length,
+            return_offsets_mapping=True, return_tensors=None,
+        )
+    except Exception:
+        logger.warning("Tokenizer does not support offset mapping; cannot build action mask")
+        return None
+
+    full_ids = enc["input_ids"]
+    offsets = enc["offset_mapping"]
+
     response_ids = full_ids[prompt_len:]
     n_resp = len(response_ids)
     if n_resp == 0:
         return None
 
-    open_ids = tokenizer(ACTION_OPEN_TAG, add_special_tokens=False)["input_ids"]
-    close_ids = tokenizer(ACTION_CLOSE_TAG, add_special_tokens=False)["input_ids"]
-
-    def _find_subseq(haystack: list[int], needle: list[int]) -> int:
-        for i in range(len(haystack) - len(needle) + 1):
-            if haystack[i : i + len(needle)] == needle:
-                return i
-        return -1
-
-    open_pos = _find_subseq(response_ids, open_ids)
-    close_pos = _find_subseq(response_ids, close_ids)
-
-    if open_pos == -1 or close_pos == -1 or close_pos <= open_pos:
-        return None
+    response_offsets = offsets[prompt_len:]
 
     mask = torch.zeros(n_resp, dtype=torch.bool)
-    action_content_start = open_pos + len(open_ids)
-    action_content_end = close_pos
-    mask[action_content_start:action_content_end] = True
+    for i, (tok_start, tok_end) in enumerate(response_offsets):
+        if tok_start < content_end_char and tok_end > content_start_char:
+            mask[i] = True
+
+    if not mask.any():
+        return None
+
     return mask
 
 
