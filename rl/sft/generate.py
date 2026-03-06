@@ -12,6 +12,7 @@ from tqdm.auto import tqdm
 
 from rl.handlers.casino.dataset import CasinoDatasetHandler
 from rl.sft.llm_thoughts import AsyncLLMThoughtGenerator
+from rl.sft.hindsight_thoughts import AsyncHindsightThoughtGenerator
 from rl.sft.turn_generators import TURN_GENERATORS
 
 logger = logging.getLogger(__name__)
@@ -44,8 +45,10 @@ class SFTConfig:
     max_total: int | None
     llm_model: str
     llm_api_key_env: str
+    llm_base_url: str | None
     tasks: dict[str, TaskSpec]
     max_concurrency: int
+    hindsight: bool
 
     @classmethod
     def from_dict(cls, d: dict) -> SFTConfig:
@@ -69,8 +72,10 @@ class SFTConfig:
             max_total=d["max_total"],
             llm_model=d["llm_model"],
             llm_api_key_env=d["llm_api_key_env"],
+            llm_base_url=d.get("llm_base_url"),
             tasks=task_specs,
             max_concurrency=d.get("max_concurrency", 30),
+            hindsight=d.get("hindsight", False),
         )
 
 
@@ -178,15 +183,28 @@ def generate(cfg: SFTConfig) -> None:
         raw_rows = sampled
         logger.info("After cap (%d): %d examples", cfg.max_total, len(raw_rows))
 
-    logger.info("%d turn rows — generating LLM thoughts", len(raw_rows))
+    logger.info("%d turn rows — generating LLM thoughts (hindsight=%s)", len(raw_rows), cfg.hindsight)
 
-    llm_gen = AsyncLLMThoughtGenerator(
-        model=cfg.llm_model,
-        api_key_env=cfg.llm_api_key_env,
-        max_concurrency=cfg.max_concurrency,
-    )
+    if cfg.hindsight:
+        llm_gen = AsyncHindsightThoughtGenerator(
+            model=cfg.llm_model,
+            api_key_env=cfg.llm_api_key_env,
+            max_concurrency=cfg.max_concurrency,
+            base_url=cfg.llm_base_url,
+        )
+    else:
+        llm_gen = AsyncLLMThoughtGenerator(
+            model=cfg.llm_model,
+            api_key_env=cfg.llm_api_key_env,
+            max_concurrency=cfg.max_concurrency,
+        )
     results = asyncio.run(llm_gen.generate_batch(raw_rows))
-    for row, (thought, source) in zip(raw_rows, results):
+    for row, result in zip(raw_rows, results):
+        if len(result) == 3:
+            thought, source, raw_prompt = result
+            row["_raw_prompt"] = raw_prompt
+        else:
+            thought, source = result
         row["_llm_thought"] = thought
         row["_llm_source"] = source
     logger.info("LLM batch complete: %d thoughts generated", len(results))
@@ -208,18 +226,15 @@ def generate(cfg: SFTConfig) -> None:
                 + row["prompt"].strip()
                 + "<|im_end|>\n<|im_start|>assistant\n"
             )
-            f.write(
-                json.dumps(
-                    {
-                        "task": row["task"],
-                        "prompt": wrapped_prompt,
-                        "completion": completion,
-                        "thought_source": source,
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
+            record: dict = {
+                "task": row["task"],
+                "prompt": wrapped_prompt,
+                "completion": completion,
+                "thought_source": source,
+            }
+            if "_raw_prompt" in row:
+                record["raw_hindsight_prompt"] = row["_raw_prompt"]
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
             written += 1
 
     if skipped:

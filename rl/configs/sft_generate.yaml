@@ -1,13 +1,15 @@
-out: data/sft/train.jsonl
+out: data/sft/train_hindsight.jsonl
 seed: 42
 dedup: true
 
-max_total: 1250
+max_total: 1000
 
-llm_model: gpt-4.1-mini-2025-04-14
-llm_api_key_env: OPENAI_API_KEY
+llm_model: anthropic/claude-sonnet-4.5
+llm_api_key_env: OPENROUTER_API_KEY
+llm_base_url: https://openrouter.ai/api/v1
+hindsight: true
 
-max_concurrency: 5
+max_concurrency: 3
 
 datasets:
   casino:

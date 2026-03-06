@@ -12,6 +12,7 @@ grpo:
   temperature: 0.7
   resume_from: null
   episode_weight: 3.0
+  asymmetric_scenarios: true
   lora:
     rank: 16
     alpha: 16

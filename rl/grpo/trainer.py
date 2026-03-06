@@ -32,7 +32,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from rl.config import GRPOConfig, RewardConfig, load_grpo_config
 from rl.env.negotiation import NegotiationEnv, Turn, _parse_agent_output
 from rl.env.personas import PERSONAS
-from rl.env.scenario import sample_scenario
+from rl.env.scenario import sample_asymmetric_scenario, sample_scenario
 from rl.grpo.checkpoint import load_checkpoint, save_checkpoint
 from rl.grpo.models import load_model_and_tokenizer, sync_clone
 from rl.grpo.policy import (
@@ -97,7 +97,7 @@ def grpo_train(
     episodes_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Run directory: %s", run_dir.resolve())
 
-    n_episodes = 200
+    n_episodes = 100
     max_new_tokens = 512
     temperature = grpo_cfg.temperature
 
@@ -219,9 +219,11 @@ def grpo_train(
     deal_rate = 0.0
     optimizer.zero_grad()
 
+    _sample_fn = sample_asymmetric_scenario if grpo_cfg.asymmetric_scenarios else sample_scenario
+
     for episode in range(start_episode, n_episodes):
         ep_start = time.time()
-        scenario = sample_scenario(rng)
+        scenario = _sample_fn(rng)
         persona = PERSONAS[rng.choice(persona_names)]
 
         logger.debug(

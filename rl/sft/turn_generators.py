@@ -168,6 +168,44 @@ def _fmt_history_ca(chat_logs: list[dict], agent: str, up_to: int) -> str:
     return "\n".join(lines) or "(no dialogue yet)"
 
 
+def _extract_outcome_ca(
+    chat_logs: list[dict],
+    agent: str,
+    agent_vals: dict[str, int],
+    partner_vals: dict[str, int],
+) -> dict:
+    """Extract the final deal outcome from CaSiNo chat logs."""
+    partner = "mturk_agent_2" if agent == "mturk_agent_1" else "mturk_agent_1"
+    for src, is_agent in ((agent, True), (partner, False)):
+        for turn in chat_logs:
+            if turn["text"] != "Submit-Deal" or turn["id"] != src:
+                continue
+            youget = turn.get("task_data", {}).get("issue2youget", {})
+            if not all(v != "" for v in youget.values()):
+                continue
+            src_alloc = {k.lower(): int(v) for k, v in youget.items()}
+            if is_agent:
+                agent_alloc = src_alloc
+                partner_alloc = {k: CA_COUNTS[k] - v for k, v in agent_alloc.items()}
+            else:
+                partner_alloc = src_alloc
+                agent_alloc = {k: CA_COUNTS[k] - v for k, v in partner_alloc.items()}
+            return {
+                "deal_reached": True,
+                "agent_allocation": agent_alloc,
+                "partner_allocation": partner_alloc,
+                "agent_points": sum(agent_alloc[k] * agent_vals[k] for k in CA_ITEMS),
+                "partner_points": sum(partner_alloc[k] * partner_vals[k] for k in CA_ITEMS),
+            }
+    return {
+        "deal_reached": False,
+        "agent_allocation": {},
+        "partner_allocation": {},
+        "agent_points": 0,
+        "partner_points": 0,
+    }
+
+
 def generate_turns_ca(instances: list[dict]) -> list[dict]:
     rows: list[dict] = []
 
@@ -177,11 +215,20 @@ def generate_turns_ca(instances: list[dict]) -> list[dict]:
         pinfo = inst["participant_info"]
 
         for agent in ("mturk_agent_1", "mturk_agent_2"):
+            partner = "mturk_agent_2" if agent == "mturk_agent_1" else "mturk_agent_1"
             v2i = pinfo[agent]["value2issue"]
             vals = {item.lower(): PRIORITY_TO_POINTS[lv] for lv, item in v2i.items()}
             max_pts = sum(CA_COUNTS[i] * vals[i] for i in CA_ITEMS)
 
+            partner_v2i = pinfo[partner]["value2issue"]
+            partner_vals = {
+                item.lower(): PRIORITY_TO_POINTS[lv] for lv, item in partner_v2i.items()
+            }
+            full_dialogue = _fmt_history_ca(chat_logs, agent, len(chat_logs))
+            dialogue_outcome = _extract_outcome_ca(chat_logs, agent, vals, partner_vals)
+
             has_prior = False
+            dialogue_turn_idx = 0
 
             for idx, turn in enumerate(chat_logs):
                 # ── Final deal (Submit-Deal) ──
@@ -197,11 +244,19 @@ def generate_turns_ca(instances: list[dict]) -> list[dict]:
                                 "talk": "I'd like to submit this deal.",
                                 "action": {"type": "offer", **alloc},
                                 "strategy_label": None,
+                                "agent_values": vals,
+                                "partner_values": partner_vals,
+                                "full_dialogue": full_dialogue,
+                                "dialogue_outcome": dialogue_outcome,
+                                "turn_index": dialogue_turn_idx,
                             }
                         )
                     continue
 
-                if turn["text"] in _META_TURNS or turn["id"] != agent:
+                if turn["text"] in _META_TURNS:
+                    continue
+                if turn["id"] != agent:
+                    dialogue_turn_idx += 1
                     continue
 
                 prior_real = [
@@ -230,8 +285,14 @@ def generate_turns_ca(instances: list[dict]) -> list[dict]:
                             "talk": text,
                             "action": action,
                             "strategy_label": None,
+                            "agent_values": vals,
+                            "partner_values": partner_vals,
+                            "full_dialogue": full_dialogue,
+                            "dialogue_outcome": dialogue_outcome,
+                            "turn_index": dialogue_turn_idx,
                         }
                     )
+                    dialogue_turn_idx += 1
                     continue
 
                 strat: str | None = None
@@ -265,8 +326,14 @@ def generate_turns_ca(instances: list[dict]) -> list[dict]:
                         "talk": text,
                         "action": action,
                         "strategy_label": strat,
+                        "agent_values": vals,
+                        "partner_values": partner_vals,
+                        "full_dialogue": full_dialogue,
+                        "dialogue_outcome": dialogue_outcome,
+                        "turn_index": dialogue_turn_idx,
                     }
                 )
+                dialogue_turn_idx += 1
 
     return rows
 
