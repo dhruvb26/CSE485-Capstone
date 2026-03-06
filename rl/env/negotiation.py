@@ -202,6 +202,14 @@ class NegotiationEnv:
             lines.append("")
 
         lines.append(format_spec)
+        if not self.history:
+            lines.append('\nThis is the opening turn — use an "offer" action.')
+        else:
+            lines.append(
+                '\nUse "counter" to propose a different allocation, '
+                '"accept" to agree to the partner\'s last offer, '
+                'or "reject" to walk away (ends negotiation with no deal).'
+            )
         return "<|im_start|>user\n" + "\n".join(lines) + "<|im_end|>\n<|im_start|>assistant\n"
 
     def build_clone_prompt(self) -> str:

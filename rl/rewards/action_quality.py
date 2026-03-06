@@ -41,8 +41,8 @@ def action_quality_reward(
         return -0.1
 
     if action.type in (ActionType.OFFER, ActionType.COUNTER):
-        if not action.allocations:
-            return 0.1
+        if not action.allocations or all(v == 0 for v in action.allocations.values()):
+            return -0.4
 
         own_pts = sum(
             action.allocations.get(item, 0) * scenario.agent_values[item]

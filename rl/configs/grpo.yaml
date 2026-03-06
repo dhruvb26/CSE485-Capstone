@@ -4,7 +4,7 @@ grpo:
   clone_sync_interval: 25
   kl_coeff: 0.08
   terminal_lambda: 0.4
-  walkaway_penalty: -0.2
+  walkaway_penalty: -0.5
   base_model: Qwen/Qwen2.5-7B-Instruct
   sft_adapter_path: checkpoints/sft-tuned/adapter
   out_dir: checkpoints/grpo
@@ -27,7 +27,7 @@ grpo:
 reward:
   terminal_weight: 0.50
   format_weight: 0.15
-  arithmetic_weight: 0.15
-  partner_model_weight: 0.10
-  action_quality_weight: 0.20
+  arithmetic_weight: 0.10
+  partner_model_weight: 0.05
+  action_quality_weight: 0.40
   decay_window: 1000

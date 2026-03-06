@@ -1,9 +1,3 @@
-"""Minimal Streamlit app to browse GRPO training episodes.
-
-Usage:
-    streamlit run rl/episode_viewer.py
-"""
-
 import json
 import re
 from pathlib import Path
@@ -11,6 +5,55 @@ from pathlib import Path
 import streamlit as st
 
 RUNS_DIR = Path("runs")
+
+
+def inject_styles() -> None:
+    st.markdown(
+        """
+        <style>
+            .block-container {
+                padding-top: 3.5rem;
+                padding-bottom: 2rem;
+            }
+            div[data-testid="stMetric"] {
+                background: transparent;
+                border: none;
+                padding: 0;
+            }
+            div[data-testid="stMetric"] label {
+                font-size: 0.78rem;
+                letter-spacing: 0.02em;
+            }
+            div[data-testid="stMetricValue"] {
+                font-size: 1.45rem;
+            }
+            .eyebrow {
+                font-size: 0.78rem;
+                font-weight: 600;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                opacity: 0.72;
+                margin-bottom: 0.35rem;
+            }
+            .page-title {
+                font-size: 2.35rem;
+                font-weight: 650;
+                line-height: 1.05;
+                margin-bottom: 0.35rem;
+            }
+            .page-subtitle {
+                max-width: 52rem;
+                opacity: 0.78;
+                margin-bottom: 0;
+            }
+            .turn-talk {
+                margin: 0.5rem 0 1rem;
+                line-height: 1.65;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def load_episode(path: Path) -> tuple[list[dict], dict | None]:
@@ -37,6 +80,35 @@ def extract_system_prompt(prompt: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+def render_intro() -> None:
+    st.markdown(
+        '<div class="eyebrow">Training Run Explorer</div>', unsafe_allow_html=True
+    )
+    st.markdown(
+        '<div class="page-title">GRPO Episode Viewer</div>', unsafe_allow_html=True
+    )
+    st.markdown(
+        '<p class="page-subtitle">Inspect a single negotiation episode with cleaner structure,'
+        " quick stats, scenario context, and turn-by-turn reasoning.</p>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_summary(summary: dict) -> None:
+    cards = [
+        ("Reward", f"{summary['reward']:.3f}", ":material/finance:"),
+        ("Deal", "Yes" if summary["deal"] else "No", ":material/handshake:"),
+        ("Turns", str(summary["turns"]), ":material/forum:"),
+        ("Persona", summary["persona"], ":material/badge:"),
+        ("Time", f"{summary['elapsed_s']:.1f}s", ":material/timer:"),
+    ]
+    cols = st.columns(len(cards))
+    for col, (label, value, icon) in zip(cols, cards):
+        with col:
+            with st.container(border=True):
+                st.metric(f"{icon} {label}", value)
+
+
 def render_scenario(summary: dict | None, turns: list[dict]) -> None:
     if summary:
         sc = summary.get("scenario", {})
@@ -44,24 +116,23 @@ def render_scenario(summary: dict | None, turns: list[dict]) -> None:
         agent_vals = sc.get("agent_values", {})
         partner_vals = sc.get("partner_values", {})
 
-        st.subheader("Scenario")
+        st.markdown("### :material/package_2: Scenario")
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown("**Items available**")
-            for item, qty in items.items():
-                st.markdown(f"- {item.title()}: {qty}")
+            with st.container(border=True):
+                st.markdown("##### :material/inventory_2: Items Available")
+                for item, qty in items.items():
+                    st.markdown(f"- `{item.title()}`: {qty}")
         with col2:
-            st.markdown("**Learner point values**")
-            for item, val in agent_vals.items():
-                st.markdown(f"- {item.title()}: {val} pts")
-            max_learner = sum(items[k] * agent_vals[k] for k in items)
-            st.caption(f"Max possible: {max_learner} pts")
+            with st.container(border=True):
+                st.markdown("##### :material/school: Learner Values")
+                for item, val in agent_vals.items():
+                    st.markdown(f"- `{item.title()}`: {val} pts")
         with col3:
-            st.markdown("**Partner point values**")
-            for item, val in partner_vals.items():
-                st.markdown(f"- {item.title()}: {val} pts")
-            max_partner = sum(items[k] * partner_vals[k] for k in items)
-            st.caption(f"Max possible: {max_partner} pts")
+            with st.container(border=True):
+                st.markdown("##### :material/groups_2: Partner Values")
+                for item, val in partner_vals.items():
+                    st.markdown(f"- `{item.title()}`: {val} pts")
 
     learner_prompt = next(
         (extract_system_prompt(t["prompt"]) for t in turns if t["agent"] == "learner"),
@@ -73,63 +144,69 @@ def render_scenario(summary: dict | None, turns: list[dict]) -> None:
     )
 
     if learner_prompt or clone_prompt:
-        st.subheader("System Prompts")
-        col1, col2 = st.columns(2)
-        with col1:
-            if learner_prompt:
-                st.markdown("**Learner**")
-                st.code(learner_prompt, language=None)
-        with col2:
-            if clone_prompt:
-                st.markdown("**Clone**")
-                st.code(clone_prompt, language=None)
+        st.markdown("### :material/terminal: System Prompts")
+        labels, prompts = [], []
+        if learner_prompt:
+            labels.append(":material/school: Learner")
+            prompts.append(learner_prompt)
+        if clone_prompt:
+            labels.append(":material/person: Clone")
+            prompts.append(clone_prompt)
+
+        for tab, prompt in zip(st.tabs(labels), prompts):
+            with tab:
+                st.code(prompt, language=None)
 
 
 def render_turn(turn: dict) -> None:
     agent = turn["agent"]
     is_learner = agent == "learner"
     label = "Learner" if is_learner else "Clone"
-    icon = "🟦" if is_learner else "🟧"
+    icon = ":material/school:" if is_learner else ":material/person:"
 
     response = turn.get("best_response") or turn.get("response", "")
     thought = extract_xml(response, "thought")
     talk = extract_xml(response, "talk")
     action = extract_xml(response, "action")
 
-    st.markdown(f"#### {icon} Turn {turn['turn']} — {label}")
+    head_col, _ = st.columns([1.3, 1], vertical_alignment="center")
+    with head_col:
+        st.markdown(f"#### {icon} {label}")
 
-    if talk:
-        st.chat_message("user" if is_learner else "assistant").markdown(talk)
+    with st.container(border=True):
+        detail_cols = st.columns(2)
+        with detail_cols[0]:
+            if thought:
+                with st.expander("Thought"):
+                    st.markdown(thought)
+        with detail_cols[1]:
+            if action:
+                with st.expander("Action"):
+                    st.code(action, language="json")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if thought:
-            with st.expander("Thought"):
-                st.markdown(thought)
-    with col2:
-        if action:
-            with st.expander("Action"):
-                st.code(action, language="json")
+        if talk:
+            st.markdown(f'<div class="turn-talk">{talk}</div>', unsafe_allow_html=True)
 
-    if is_learner and "scores" in turn:
-        with st.expander("Candidates & scores"):
-            candidates = turn["candidates"]
-            scores = turn["scores"]
-            advantages = turn.get("advantages", [])
-            best = turn.get("best_idx", -1)
-            for i, (c, s) in enumerate(zip(candidates, scores)):
-                marker = " **← best**" if i == best else ""
-                c_talk = extract_xml(c, "talk") or c[:80]
-                adv = f"  adv={advantages[i]:+.3f}" if i < len(advantages) else ""
-                st.markdown(f"`[{i}]` score={s:.3f}{adv}{marker}  \n> {c_talk}")
+        if is_learner and "scores" in turn:
+            with st.expander("Candidates and Scores"):
+                candidates = turn["candidates"]
+                scores = turn["scores"]
+                advantages = turn.get("advantages", [])
+                best = turn.get("best_idx", -1)
+                for i, (c, s) in enumerate(zip(candidates, scores)):
+                    marker = " **best**" if i == best else ""
+                    c_talk = extract_xml(c, "talk") or c[:80]
+                    adv = f"  adv={advantages[i]:+.3f}" if i < len(advantages) else ""
+                    st.markdown(f"`[{i}]` score={s:.3f}{adv}{marker}  \n> {c_talk}")
 
-    st.divider()
+st.set_page_config(
+    page_title="Episode Viewer", page_icon=":material/insights:", layout="wide"
+)
+inject_styles()
 
-
-# --- App ---
-
-st.set_page_config(page_title="Episode Viewer", layout="wide")
-st.title("GRPO Episode Viewer")
+if not RUNS_DIR.exists():
+    st.warning("No runs found in `runs/`.")
+    st.stop()
 
 run_dirs = sorted(
     [d for d in RUNS_DIR.iterdir() if d.is_dir() and (d / "episodes").exists()],
@@ -140,32 +217,34 @@ if not run_dirs:
     st.warning("No runs found in `runs/`.")
     st.stop()
 
-run_name = st.sidebar.selectbox("Run", [d.name for d in run_dirs])
-run_path = RUNS_DIR / run_name / "episodes"
+with st.sidebar:
+    st.markdown("### :material/folder_open: Browse")
+    st.caption("Choose a run and episode to inspect.")
+    run_name = st.selectbox("Run", [d.name for d in run_dirs])
+    run_path = RUNS_DIR / run_name / "episodes"
 
-ep_files = sorted(run_path.glob("ep_*.jsonl"))
-if not ep_files:
-    st.warning("No episode files found.")
-    st.stop()
+    ep_files = sorted(run_path.glob("ep_*.jsonl"))
+    if not ep_files:
+        st.warning("No episode files found.")
+        st.stop()
 
-ep_labels = [f.stem for f in ep_files]
-ep_choice = st.sidebar.selectbox("Episode", ep_labels, index=len(ep_labels) - 1)
+    ep_labels = [f.stem for f in ep_files]
+    ep_choice = st.selectbox("Episode", ep_labels, index=len(ep_labels) - 1)
+    st.divider()
+    st.caption(f"{len(ep_files)} episodes in this run")
+
 ep_path = run_path / f"{ep_choice}.jsonl"
 
 turns, summary = load_episode(ep_path)
+render_intro()
 
 if summary:
-    cols = st.columns(5)
-    cols[0].metric("Reward", f"{summary['reward']:.3f}")
-    cols[1].metric("Deal", "Yes" if summary["deal"] else "No")
-    cols[2].metric("Turns", summary["turns"])
-    cols[3].metric("Persona", summary["persona"])
-    cols[4].metric("Time", f"{summary['elapsed_s']:.1f}s")
+    render_summary(summary)
 
 render_scenario(summary, turns)
 
 st.divider()
-st.subheader("Dialogue")
+st.markdown("### :material/forum: Dialogue")
 
 for turn in turns:
     render_turn(turn)
