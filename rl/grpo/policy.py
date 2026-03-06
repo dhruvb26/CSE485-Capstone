@@ -106,6 +106,7 @@ def build_action_mask(
     full_text: str,
     prompt_len: int,
     max_length: int,
+    prompt_char_len: int = 0,
 ) -> torch.Tensor | None:
     """Build a binary mask over response tokens that is 1 inside <action>…</action>.
 
@@ -115,11 +116,14 @@ def build_action_mask(
     earlier "tokenise the tag in isolation and search for that subsequence"
     approach.
 
+    *prompt_char_len* is the character length of the prompt prefix so that the
+    search skips any ``<action>`` tags that appear inside the prompt template.
+
     Returns a 1-D bool tensor of shape (n_response_tokens,), or None if the
     action span cannot be located (caller should skip this candidate).
     """
-    open_char = full_text.find(ACTION_OPEN_TAG)
-    close_char = full_text.find(ACTION_CLOSE_TAG)
+    open_char = full_text.find(ACTION_OPEN_TAG, prompt_char_len)
+    close_char = full_text.find(ACTION_CLOSE_TAG, prompt_char_len)
     if open_char == -1 or close_char == -1 or close_char <= open_char:
         return None
 
@@ -266,7 +270,10 @@ def policy_gradient_step(
         full_text = prompt + candidate
         prompt_len = _compute_prompt_len(tokenizer, prompt, full_text, MAX_SEQ_LEN)
 
-        action_mask = build_action_mask(tokenizer, full_text, prompt_len, MAX_SEQ_LEN)
+        action_mask = build_action_mask(
+            tokenizer, full_text, prompt_len, MAX_SEQ_LEN,
+            prompt_char_len=len(prompt),
+        )
         if action_mask is None:
             logger.debug("  skipping candidate — no <action> span found")
             continue
@@ -330,7 +337,10 @@ def episode_reinforce_step(
         full_text = prompt + response
         prompt_len = _compute_prompt_len(tokenizer, prompt, full_text, MAX_SEQ_LEN)
 
-        action_mask = build_action_mask(tokenizer, full_text, prompt_len, MAX_SEQ_LEN)
+        action_mask = build_action_mask(
+            tokenizer, full_text, prompt_len, MAX_SEQ_LEN,
+            prompt_char_len=len(prompt),
+        )
         if action_mask is None:
             continue
 
