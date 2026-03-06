@@ -5,6 +5,8 @@ import logging
 import os
 import re
 
+from tqdm.auto import tqdm
+
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -23,7 +25,8 @@ class _TurnThoughtResponse(BaseModel):
     thought: str = Field(
         description=(
             "A concise internal thought (2-4 sentences) explaining the negotiation reasoning "
-            "for this turn. Include point/price arithmetic and partner priority estimate."
+            "for this turn. Include explicit point arithmetic with calculations "
+            "(e.g., '2 food x 4pts = 8pts') and partner priority estimate."
         )
     )
 
@@ -59,7 +62,7 @@ The agent's next turn:
 {strategy_line}
 Write a concise internal thought (2-4 sentences) explaining the reasoning \
 leading to this action. Include:
-1. Point/price arithmetic (calculate values of current/proposed offers)
+1. Explicit point arithmetic with numerical calculations shown (e.g., '2 food x 4pts = 8pts, total = 8 + 5 = 13pts')
 2. Partner priority estimate based on dialogue
 3. Justification for the chosen action type"""
 
@@ -178,5 +181,14 @@ class AsyncLLMThoughtGenerator:
         rows: list[dict],
     ) -> list[tuple[str, str]]:
         """Process all rows in parallel, returning (thought, source) per row."""
-        tasks = [self._generate_one(row) for row in rows]
-        return await asyncio.gather(*tasks)
+        pbar = tqdm(total=len(rows), desc="LLM thoughts", unit="row")
+
+        async def _wrapped(row: dict) -> tuple[str, str]:
+            result = await self._generate_one(row)
+            pbar.update(1)
+            return result
+
+        tasks = [_wrapped(row) for row in rows]
+        results = await asyncio.gather(*tasks)
+        pbar.close()
+        return results

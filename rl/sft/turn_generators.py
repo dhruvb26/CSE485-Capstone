@@ -231,14 +231,33 @@ def generate_turns_ca(instances: list[dict]) -> list[dict]:
                 if turn["text"] in _META_TURNS or turn["id"] != agent:
                     continue
 
-                # Skip if no prior non-meta turns (greeting only)
                 prior_real = [t for t in chat_logs[:idx] if t["text"] not in _META_TURNS]
-                if len(prior_real) < 1:
-                    continue
 
                 text = sanitize_unicode(turn["text"])
                 parsed = _parse_quantities(text, CA_ITEMS, CA_COUNTS)
                 atype = _action_type(text, has_prior)
+
+                if not prior_real:
+                    # Turn-0: opening move with no dialogue history
+                    if parsed is not None:
+                        alloc = {i: parsed.get(i, 0) for i in CA_ITEMS}
+                    else:
+                        best_item = max(CA_ITEMS, key=lambda i: vals[i])
+                        alloc = {i: (CA_COUNTS[i] if i == best_item else 1) for i in CA_ITEMS}
+                    atype = "offer"
+                    has_prior = True
+                    action = {"type": atype, **alloc}
+                    ppri = "unknown"
+                    thought = _det_thought_multi(vals, CA_COUNTS, alloc, CA_ITEMS, ppri, atype)
+                    rows.append({
+                        "task": "turn_ca",
+                        "prompt": system + _TURN_INSTRUCTION,
+                        "talk": text,
+                        "action": action,
+                        "det_thought": thought,
+                        "strategy_label": None,
+                    })
+                    continue
 
                 # Strategy annotation
                 strat: str | None = None
@@ -297,16 +316,29 @@ def _parse_dnd_dialogue(dialogue_str: str) -> list[dict]:
 
 
 def _parse_dnd_output(output_str: str) -> tuple[dict[str, int], dict[str, int]]:
-    """Parse 'item0=X item1=Y ...' → (you_alloc, them_alloc)."""
+    """Parse 'item0=X item1=Y ...' → (you_alloc, them_alloc).
+
+    Returns empty dicts for no-agreement / disagree outcomes.
+    """
+    stripped = output_str.strip()
+    if "<no_agreement>" in stripped or "<disagree>" in stripped:
+        return {}, {}
     vals: list[int] = []
-    for tok in output_str.strip().split():
+    for tok in stripped.split():
         if "=" in tok:
             vals.append(int(tok.split("=")[1]))
     if len(vals) < 6:
-        logger.warning("Malformed DND output (expected 6 values, got %d): %s", len(vals), output_str[:100])
+        logger.debug("Malformed DND output (expected 6 values, got %d): %s", len(vals), stripped[:100])
     you = {"book": vals[0], "hat": vals[1], "ball": vals[2]} if len(vals) >= 3 else {}
     them = {"book": vals[3], "hat": vals[4], "ball": vals[5]} if len(vals) >= 6 else {}
     return you, them
+
+
+_DND_TO_CA = {"book": "food", "hat": "water", "ball": "firewood"}
+
+
+def _remap_dnd_alloc(alloc: dict[str, int]) -> dict[str, int]:
+    return {_DND_TO_CA[k]: v for k, v in alloc.items()}
 
 
 def generate_turns_dnd(instances: list[dict]) -> list[dict]:
@@ -315,21 +347,24 @@ def generate_turns_dnd(instances: list[dict]) -> list[dict]:
     for inst in instances:
         inp = inst["input"]
         counts_l, values_l = inp["count"], inp["value"]
-        counts = {"book": counts_l[0], "hat": counts_l[1], "ball": counts_l[2]}
-        vals = {"book": values_l[0], "hat": values_l[1], "ball": values_l[2]}
-        max_pts = sum(counts[i] * vals[i] for i in DND_ITEMS)
+        raw_counts = {"book": counts_l[0], "hat": counts_l[1], "ball": counts_l[2]}
+        raw_vals = {"book": values_l[0], "hat": values_l[1], "ball": values_l[2]}
+
+        counts = _remap_dnd_alloc(raw_counts)
+        vals = _remap_dnd_alloc(raw_vals)
+        max_pts = sum(counts[i] * vals[i] for i in CA_ITEMS)
         if max_pts == 0:
             continue
 
-        system = _DND_SYSTEM.format(
-            n_book=counts["book"], n_hat=counts["hat"], n_ball=counts["ball"],
-            book_pts=vals["book"], hat_pts=vals["hat"], ball_pts=vals["ball"],
-            max_pts=max_pts,
+        system = _CA_SYSTEM.format(
+            food=vals["food"], water=vals["water"],
+            firewood=vals["firewood"], max_pts=max_pts,
         )
 
         dialogue_str = inst.get("dialogue", "")
         turns = _parse_dnd_dialogue(dialogue_str)
-        you_alloc, _ = _parse_dnd_output(inst.get("output", ""))
+        raw_you_alloc, _ = _parse_dnd_output(inst.get("output", ""))
+        you_alloc = _remap_dnd_alloc(raw_you_alloc) if raw_you_alloc else {}
 
         has_prior = False
         for idx, turn in enumerate(turns):
@@ -339,11 +374,11 @@ def generate_turns_dnd(instances: list[dict]) -> list[dict]:
                 continue
 
             text = turn["text"]
-            parsed = _parse_quantities(text, DND_ITEMS, counts)
+            parsed = _parse_quantities(text, DND_ITEMS, raw_counts)
             atype = _action_type(text, has_prior)
 
             if parsed is not None:
-                alloc = {i: parsed.get(i, 0) for i in DND_ITEMS}
+                alloc = _remap_dnd_alloc({i: parsed.get(i, 0) for i in DND_ITEMS})
                 has_prior = True
             elif atype == "accept" and you_alloc:
                 alloc = dict(you_alloc)
@@ -356,8 +391,8 @@ def generate_turns_dnd(instances: list[dict]) -> list[dict]:
             hist = _fmt_history_simple(turns, "YOU", idx)
             thought = _det_thought_multi(
                 vals, counts,
-                alloc or {i: 0 for i in DND_ITEMS},
-                DND_ITEMS, "unknown", atype,
+                alloc or {i: 0 for i in CA_ITEMS},
+                CA_ITEMS, "unknown", atype,
             )
 
             rows.append({

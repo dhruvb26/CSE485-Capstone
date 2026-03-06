@@ -91,12 +91,8 @@ def load_model_and_tokenizer(
 def sync_clone(learner_model, clone_model) -> None:
     """Copy learner's LoRA weights to the clone."""
     clone_device = next(clone_model.parameters()).device
-    learner_state = {
-        k: v.clone().to(clone_device)
-        for k, v in learner_model.state_dict().items()
-        if "lora" in k.lower()
-    }
-    clone_state = clone_model.state_dict()
-    clone_state.update(learner_state)
-    clone_model.load_state_dict(clone_state)
+    learner_params = dict(learner_model.named_parameters())
+    for name, param in clone_model.named_parameters():
+        if "lora" in name.lower() and name in learner_params:
+            param.data.copy_(learner_params[name].data.to(clone_device))
     logger.info("Synced clone weights from learner")

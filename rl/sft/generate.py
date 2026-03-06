@@ -237,9 +237,10 @@ def generate(cfg: SFTConfig) -> None:
             else:
                 completion = _make_eval_completion(thought, row["answer_json"], source)
 
+            wrapped_prompt = "<|im_start|>user\n" + row["prompt"].strip() + "<|im_end|>\n<|im_start|>assistant\n"
             f.write(json.dumps({
                 "task": row["task"],
-                "prompt": row["prompt"],
+                "prompt": wrapped_prompt,
                 "completion": completion,
                 "thought_source": source,
             }, ensure_ascii=False) + "\n")
@@ -250,5 +251,8 @@ def generate(cfg: SFTConfig) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     cfg = load_config(Path("rl/configs/sft_generate.yaml"))
     generate(cfg)
