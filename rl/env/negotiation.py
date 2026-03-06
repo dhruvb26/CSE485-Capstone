@@ -292,7 +292,7 @@ def _parse_agent_output(
 
     try:
         action = Action.from_dict(action_dict)
-    except (ValueError, KeyError):
+    except (ValueError, KeyError, TypeError):
         return thought, talk, None, False
 
     if action.type in (ActionType.OFFER, ActionType.COUNTER):
