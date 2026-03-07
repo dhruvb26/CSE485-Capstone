@@ -24,6 +24,7 @@ def save_checkpoint(
     rng: random.Random,
     recent_rewards: deque,
     recent_deals: deque,
+    scheduler=None,
 ) -> Path:
     """Persist adapter weights, optimizer state, and RNG state to disk."""
     ckpt_dir = out_dir / f"adapter-ep{tag}"
@@ -38,6 +39,8 @@ def save_checkpoint(
         "recent_rewards": list(recent_rewards),
         "recent_deals": list(recent_deals),
     }
+    if scheduler is not None:
+        state["scheduler_state_dict"] = scheduler.state_dict()
     if torch.cuda.is_available():
         state["cuda_rng_states"] = torch.cuda.get_rng_state_all()
 
@@ -52,6 +55,8 @@ def load_checkpoint(
     optimizer,
     rng: random.Random,
     rolling_window: int,
+    scheduler=None,
+    grad_accum: int = 4,
 ) -> tuple[int, deque, deque]:
     """Restore training state from a checkpoint directory.
 
@@ -77,6 +82,19 @@ def load_checkpoint(
     torch.random.set_rng_state(state["torch_rng_state"])
     if torch.cuda.is_available() and "cuda_rng_states" in state:
         torch.cuda.set_rng_state_all(state["cuda_rng_states"])
+
+    if scheduler is not None and "scheduler_state_dict" in state:
+        scheduler.load_state_dict(state["scheduler_state_dict"])
+        logger.info("Restored LR scheduler state (last_epoch=%d)", scheduler.last_epoch)
+    elif scheduler is not None:
+        # Legacy checkpoint without scheduler — advance manually
+        grad_accum_steps = (state["episode"] + 1) // grad_accum
+        for _ in range(grad_accum_steps):
+            scheduler.step()
+        logger.info(
+            "No scheduler state in checkpoint — advanced %d steps to match episode %d",
+            grad_accum_steps, state["episode"],
+        )
 
     start_episode = state["episode"] + 1
 

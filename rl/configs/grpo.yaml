@@ -10,7 +10,7 @@ grpo:
   out_dir: checkpoints/grpo
   seed: 42
   temperature: 0.7
-  resume_from: null
+  resume_from: checkpoints/grpo/adapter-ep50
   episode_weight: 3.0
   asymmetric_scenarios: true
   lora:
@@ -23,7 +23,7 @@ grpo:
     lr: 0.00002
     grad_accum: 4
     warmup_ratio: 0.05
-    save_steps: 25
+    save_steps: 24
 
 reward:
   terminal_weight: 0.50
