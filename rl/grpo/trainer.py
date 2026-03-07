@@ -166,6 +166,8 @@ def grpo_train(
     ROLLING_WINDOW = min(50, max(n_episodes // 5, 1))
     recent_rewards: deque[float] = deque(maxlen=ROLLING_WINDOW)
     recent_deals: deque[bool] = deque(maxlen=ROLLING_WINDOW)
+    avg_reward = 0.0
+    deal_rate = 0.0
 
     start_episode = 0
     if grpo_cfg.resume_from:
@@ -177,8 +179,17 @@ def grpo_train(
                 optimizer,
                 rng,
                 ROLLING_WINDOW,
+                scheduler=scheduler,
+                grad_accum=grad_accum,
             )
             sync_clone(learner_model, clone_model)
+            if recent_rewards:
+                avg_reward = sum(recent_rewards) / len(recent_rewards)
+                deal_rate = sum(recent_deals) / len(recent_deals)
+                logger.info(
+                    "Restored baseline: avg_reward=%.4f  deal_rate=%.0f%%",
+                    avg_reward, deal_rate * 100,
+                )
         else:
             logger.warning("resume_from path %s not found — starting fresh", resume_dir)
 
@@ -215,8 +226,6 @@ def grpo_train(
             indent=2,
         )
 
-    avg_reward = 0.0
-    deal_rate = 0.0
     optimizer.zero_grad()
 
     _sample_fn = sample_asymmetric_scenario if grpo_cfg.asymmetric_scenarios else sample_scenario
@@ -451,6 +460,12 @@ def grpo_train(
             sync_clone(learner_model, clone_model)
 
         if (episode + 1) % grpo_cfg.training.save_steps == 0:
+            if (episode + 1) % grad_accum != 0:
+                logger.warning(
+                    "save_steps=%d not aligned with grad_accum=%d at ep %d — "
+                    "accumulated gradients since last optimizer step will be lost on resume",
+                    grpo_cfg.training.save_steps, grad_accum, episode + 1,
+                )
             save_checkpoint(
                 out_dir,
                 str(episode + 1),
@@ -461,6 +476,7 @@ def grpo_train(
                 rng,
                 recent_rewards,
                 recent_deals,
+                scheduler=scheduler,
             )
 
     total_elapsed = time.time() - train_start
