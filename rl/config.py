@@ -1,205 +1,175 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from pathlib import Path
 
 import yaml
 
-
-@dataclass
-class LoggingConfig:
-    level: str
+log = logging.getLogger(__name__)
 
 
 @dataclass
-class OpenAIModelConfig:
+class DatasetConfig:
+    path: str
+
+    @classmethod
+    def from_dict(cls, d: dict) -> DatasetConfig:
+        return cls(path=d["path"])
+
+
+@dataclass
+class GenerateConfig:
     model: str
-    api_key_env: str
     temperature: float
-    max_tokens: int
+    base_url: str | None
+    api_key_env: str | None
+    max_retries: int
+    retry_min_wait: int
+    retry_max_wait: int
+    max_concurrent: int
+    max_instances: int | None
+    datasets: dict[str, DatasetConfig]
+    output_jsonl: str
 
+    @classmethod
+    def from_dict(cls, d: dict) -> GenerateConfig:
+        mode = d.get("mode", "api")
+        mode_cfg = d.get(mode)
+        if mode_cfg is None:
+            raise ValueError(
+                f"Mode '{mode}' not found in generate config. "
+                f"Available modes: {[k for k in d if isinstance(d[k], dict) and k != 'datasets']}"
+            )
 
-@dataclass
-class LocalModelConfig:
-    model_name: str
-    max_seq_length: int
-    load_in_4bit: bool
-    temperature: float
-    max_new_tokens: int
-    gpu_memory_utilization: float
-    stop_strings: list[str]
-    adapter_path: str | None
+        datasets = {
+            name: DatasetConfig.from_dict(ds) for name, ds in d["datasets"].items()
+        }
+        return cls(
+            model=mode_cfg["model"],
+            temperature=d["temperature"],
+            base_url=mode_cfg.get("base_url"),
+            api_key_env=mode_cfg.get("api_key_env"),
+            max_retries=mode_cfg["max_retries"],
+            retry_min_wait=mode_cfg["retry_min_wait"],
+            retry_max_wait=mode_cfg["retry_max_wait"],
+            max_concurrent=mode_cfg["max_concurrent"],
+            max_instances=d.get("max_instances"),
+            datasets=datasets,
+            output_jsonl=d["output_jsonl"],
+        )
 
 
 @dataclass
 class ModelConfig:
-    type: str
-    openai: OpenAIModelConfig
-    local: LocalModelConfig
-
-
-@dataclass
-class DatasetPaths:
-    test: str
-    train: str
-
-
-@dataclass
-class DataConfig:
-    base_dir: str
-    casino: DatasetPaths
-
-
-@dataclass
-class EvalConfig:
-    n_instances: int
-    tasks: dict[str, list[str]]
-
-
-@dataclass
-class TrainConfig:
-    logging: LoggingConfig
-    model: ModelConfig
-    data: DataConfig
-    eval: EvalConfig
+    name: str
+    hf_home: str
+    dtype: str
 
     @classmethod
-    def from_dict(cls, d: dict) -> TrainConfig:
-        m = d["model"]
+    def from_dict(cls, d: dict) -> ModelConfig:
         return cls(
-            logging=LoggingConfig(**d["logging"]),
-            model=ModelConfig(
-                type=m["type"],
-                openai=OpenAIModelConfig(**m["openai"]),
-                local=LocalModelConfig(**m["local"]),
-            ),
-            data=DataConfig(
-                base_dir=d["data"]["base_dir"],
-                casino=DatasetPaths(**d["data"]["casino"]),
-            ),
-            eval=EvalConfig(
-                n_instances=d["eval"]["n_instances"],
-                tasks=d["eval"]["tasks"],
-            ),
+            name=d["name"],
+            hf_home=d["hf_home"],
+            dtype=d["dtype"],
         )
 
 
-def load_config(path: Path) -> TrainConfig:
-    with open(path, encoding="utf-8") as f:
-        return TrainConfig.from_dict(yaml.safe_load(f))
+@dataclass
+class SFTConfig:
+    output_dir: str
+    max_steps: int
+    per_device_train_batch_size: int
+    per_device_eval_batch_size: int
+    learning_rate: float
+    logging_steps: int
+    save_steps: int
+    eval_strategy: str
+    eval_steps: int
+    max_length: int
+    assistant_only_loss: bool
+    eos_token: str
+
+    @classmethod
+    def from_dict(cls, d: dict) -> SFTConfig:
+        return cls(
+            output_dir=d["output_dir"],
+            max_steps=d["max_steps"],
+            per_device_train_batch_size=d["per_device_train_batch_size"],
+            per_device_eval_batch_size=d.get("per_device_eval_batch_size", 1),
+            learning_rate=d["learning_rate"],
+            logging_steps=d["logging_steps"],
+            save_steps=d["save_steps"],
+            eval_strategy=d["eval_strategy"],
+            eval_steps=d["eval_steps"],
+            max_length=d["max_length"],
+            assistant_only_loss=d.get("assistant_only_loss", False),
+            eos_token=d.get("eos_token", ""),
+        )
+
 
 @dataclass
 class LoraConfig:
-    rank: int
-    alpha: int
-    dropout: float
+    r: int
+    lora_alpha: int
+    lora_dropout: float
+    bias: str
+    target_modules: str
+    task_type: str
+
+    @classmethod
+    def from_dict(cls, d: dict) -> LoraConfig:
+        return cls(
+            r=d["r"],
+            lora_alpha=d["lora_alpha"],
+            lora_dropout=d["lora_dropout"],
+            bias=d["bias"],
+            target_modules=d["target_modules"],
+            task_type=d["task_type"],
+        )
 
 
 @dataclass
 class TrainingConfig:
-    max_seq_length: int
-    load_in_4bit: bool
-    lr: float
-    grad_accum: int
-    warmup_ratio: float
-    save_steps: int
-    epochs: int = 1
-    batch_size: int = 1
-
-
-@dataclass
-class SFTTrainConfig:
-    data: str
-    tasks: list[str] | None
-    model_name: str
-    out_dir: str
-    seed: int
+    model: ModelConfig
+    sft: SFTConfig
     lora: LoraConfig
-    training: TrainingConfig
-    adapter_path: str | None
+    data_path: str
+    val_split: float
+    resume_from: str | None
 
     @classmethod
-    def from_dict(cls, d: dict) -> SFTTrainConfig:
+    def from_dict(cls, d: dict) -> TrainingConfig:
         return cls(
-            data=d["data"],
-            tasks=d["tasks"],
-            model_name=d["model_name"],
-            out_dir=d["out_dir"],
-            seed=d["seed"],
-            lora=LoraConfig(**d["lora"]),
-            training=TrainingConfig(**d["training"]),
-            adapter_path=d["adapter_path"],
-        )
-
-
-def load_train_config(path: Path) -> SFTTrainConfig:
-    with open(path, encoding="utf-8") as f:
-        return SFTTrainConfig.from_dict(yaml.safe_load(f))
-
-
-@dataclass
-class GRPOConfig:
-    candidates_per_turn: int
-    max_turns: int
-    clone_sync_interval: int
-    kl_coeff: float
-    terminal_lambda: float
-    walkaway_penalty: float
-    lora: LoraConfig
-    training: TrainingConfig
-    base_model: str
-    sft_adapter_path: str
-    out_dir: str
-    seed: int
-    temperature: float = 1.0
-    resume_from: str | None = None
-    episode_weight: float = 1.0
-    asymmetric_scenarios: bool = True
-
-    @classmethod
-    def from_dict(cls, d: dict) -> GRPOConfig:
-        return cls(
-            candidates_per_turn=d["candidates_per_turn"],
-            max_turns=d["max_turns"],
-            clone_sync_interval=d["clone_sync_interval"],
-            kl_coeff=d["kl_coeff"],
-            terminal_lambda=d["terminal_lambda"],
-            walkaway_penalty=d["walkaway_penalty"],
-            lora=LoraConfig(**d["lora"]),
-            training=TrainingConfig(**d["training"]),
-            base_model=d["base_model"],
-            sft_adapter_path=d["sft_adapter_path"],
-            out_dir=d["out_dir"],
-            seed=d["seed"],
-            temperature=d.get("temperature", 1.0),
+            model=ModelConfig.from_dict(d["model"]),
+            sft=SFTConfig.from_dict(d["sft"]),
+            lora=LoraConfig.from_dict(d["lora"]),
+            data_path=d["data_path"],
+            val_split=d.get("val_split", 0.0),
             resume_from=d.get("resume_from"),
-            episode_weight=d.get("episode_weight", 1.0),
-            asymmetric_scenarios=d.get("asymmetric_scenarios", True),
         )
 
 
-@dataclass
-class RewardConfig:
-    terminal_weight: float
-    format_weight: float
-    arithmetic_weight: float
-    partner_model_weight: float
-    action_quality_weight: float
-    decay_window: int
-
-    @classmethod
-    def from_dict(cls, d: dict) -> RewardConfig:
-        return cls(
-            terminal_weight=d["terminal_weight"],
-            format_weight=d["format_weight"],
-            arithmetic_weight=d["arithmetic_weight"],
-            partner_model_weight=d["partner_model_weight"],
-            action_quality_weight=d.get("action_quality_weight", 0.20),
-            decay_window=d["decay_window"],
-        )
+def load_generate_config(path: str) -> GenerateConfig:
+    """Load generate configuration from a YAML file and return a typed config."""
+    try:
+        with open(path, "r") as f:
+            return GenerateConfig.from_dict(yaml.safe_load(f))
+    except FileNotFoundError:
+        log.error("Generate config not found: %s", path)
+        raise
+    except Exception:
+        log.error("Failed to parse generate config: %s", path)
+        raise
 
 
-def load_grpo_config(path: Path) -> tuple[GRPOConfig, RewardConfig]:
-    with open(path, encoding="utf-8") as f:
-        d = yaml.safe_load(f)
-    return GRPOConfig.from_dict(d["grpo"]), RewardConfig.from_dict(d["reward"])
+def load_training_config(path: str) -> TrainingConfig:
+    """Load training configuration from a YAML file and return a typed config."""
+    try:
+        with open(path, "r") as f:
+            return TrainingConfig.from_dict(yaml.safe_load(f))
+    except FileNotFoundError:
+        log.error("Training config not found: %s", path)
+        raise
+    except Exception:
+        log.error("Failed to parse training config: %s", path)
+        raise

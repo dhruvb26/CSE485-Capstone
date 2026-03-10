@@ -1,0 +1,36 @@
+data_path: "data/sft/train.jsonl"
+val_split: 0.15
+resume_from: null
+
+model:
+  name: "Qwen/Qwen2.5-7B-Instruct"
+  hf_home: "/scratch/dbansa11/hf_models"
+  dtype: "bfloat16"
+
+sft:
+  output_dir: "checkpoints/sft-tuned"
+  num_train_epochs: 1
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  per_device_eval_batch_size: 4
+  learning_rate: 1.0e-5
+  logging_steps: 10
+  save_steps: 100
+  eval_strategy: "steps"
+  eval_steps: 50
+  max_length: 2048
+  assistant_only_loss: true
+  eos_token: "<|im_end|>"
+  # for A100
+  bf16: true
+  tf32: true
+  gradient_checkpointing: true
+  packing: true # Packs multiple short sequences to speed up training ~2x
+
+lora:
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.1
+  bias: "none"
+  target_modules: "all-linear"
+  task_type: "CAUSAL_LM"
