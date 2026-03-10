@@ -1,55 +1,25 @@
 [server]
-enableStaticServing = true
+enableStaticServing = false
 
-[[theme.fontFaces]]
-family = "SpaceGrotesk"
-url = "app/static/SpaceGrotesk-VariableFont_wght.ttf"
-
-[[theme.fontFaces]]
-family = "SpaceMono"
-url = "app/static/SpaceMono-Bold.ttf"
-style = "normal"
-weight = 700
-
-[[theme.fontFaces]]
-family = "SpaceMono"
-url = "app/static/SpaceMono-BoldItalic.ttf"
-style = "italic"
-weight = 700
-
-[[theme.fontFaces]]
-family = "SpaceMono"
-url = "app/static/SpaceMono-Italic.ttf"
-style = "italic"
-weight = 400
-
-[[theme.fontFaces]]
-family = "SpaceMono"
-url = "app/static/SpaceMono-Regular.ttf"
-style = "normal"
-weight = 400
+[browser]
+gatherUsageStats = false
 
 [theme]
-primaryColor = "#cb785c"
-backgroundColor = "#fdfdf8"
-secondaryBackgroundColor = "#ecebe3"
-textColor = "#3d3a2a"
-linkColor = "#3d3a2a"
-borderColor = "#d3d2ca"
-showWidgetBorder = true
-baseRadius = "0.75rem"
-buttonRadius = "full"
-font = "SpaceGrotesk"
-headingFontWeights = [600,500,500,500,500,500]
-headingFontSizes = ["3rem", "2rem"]
-codeFont = "SpaceMono"
-codeFontSize = ".75rem"
-codeBackgroundColor = "#ecebe4"
+base = "light"
+primaryColor = "#8C1D40"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#E5E7EB"
+textColor = "#1A1A1A"
+linkColor = "#0366D6"
+borderColor = "#E5E7EB"
+baseRadius = "0.425rem"
+font = "'IBM Plex Sans':https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+codeBackgroundColor = "#E5E7EB"
 showSidebarBorder = true
-chartCategoricalColors = ["#0ea5e9", "#059669", "#fbbf24"]
+headingFontSizes = ["40px", "32px", "24px"]
+headingFontWeights = 500
 
-[theme.sidebar]
-backgroundColor = "#f0f0ec"
-secondaryBackgroundColor = "#ecebe3"
-headingFontSizes = ["1.6rem", "1.4rem", "1.2rem"]
-dataframeHeaderBackgroundColor = "#e4e4e0"
+[theme.sidebar] 
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#E5E7EB"

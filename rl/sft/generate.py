@@ -1,253 +1,161 @@
-from __future__ import annotations
-
 import asyncio
-import json
 import logging
-import random
-from dataclasses import dataclass
-from pathlib import Path
+import os
 
-import yaml
-from tqdm.auto import tqdm
+from openai import (
+    APIConnectionError,
+    APIError,
+    AsyncOpenAI,
+    RateLimitError,
+)
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
-from rl.handlers.casino.dataset import CasinoDatasetHandler
-from rl.sft.llm_thoughts import AsyncLLMThoughtGenerator
-from rl.sft.hindsight_thoughts import AsyncHindsightThoughtGenerator
-from rl.sft.turn_generators import TURN_GENERATORS
+from rl.config import GenerateConfig
+from rl.sft.data import (
+    build_annotation_requests,
+    merge_annotations,
+    parse_tag_content,
+)
 
-logger = logging.getLogger(__name__)
-
-ALL_TASK_GENERATORS = {**TURN_GENERATORS}
-ALL_TASKS: list[str] = list(ALL_TASK_GENERATORS.keys())
-
-DATASET_HANDLERS: dict[str, type] = {
-    "casino": CasinoDatasetHandler,
-}
-
-
-@dataclass
-class TaskSpec:
-    weight: float
-
-
-@dataclass
-class DatasetSpec:
-    path: str
-    tasks: list[str]
+log = logging.getLogger(__name__)
 
 
-@dataclass
-class SFTConfig:
-    datasets: dict[str, DatasetSpec]
-    out: str
-    seed: int
-    dedup: bool
-    max_total: int | None
-    llm_model: str
-    llm_api_key_env: str
-    llm_base_url: str | None
-    tasks: dict[str, TaskSpec]
-    max_concurrency: int
-    hindsight: bool
+def create_openai_client(config: GenerateConfig) -> AsyncOpenAI:
+    """Create an AsyncOpenAI client from the generate config.
 
-    @classmethod
-    def from_dict(cls, d: dict) -> SFTConfig:
-        weights: dict[str, float] = d["weights"]
+    Reads the API key from the environment variable named in
+    config.api_key_env. If config.base_url is set (e.g. for
+    OpenRouter or a local vLLM server), it is forwarded to the client.
+    When no API key is found (typical for local vLLM), a placeholder
+    is used so the client still initialises.
+    """
+    api_key = os.environ.get(config.api_key_env) if config.api_key_env else None
+    kwargs: dict = {"api_key": api_key or "no-key-required"}
+    if config.base_url:
+        kwargs["base_url"] = config.base_url
 
-        datasets = {}
-        for name, spec in d["datasets"].items():
-            datasets[name] = DatasetSpec(path=spec["path"], tasks=spec["tasks"])
-
-        all_task_ids = [tid for ds in datasets.values() for tid in ds.tasks]
-        task_specs = {
-            tid: TaskSpec(weight=weights[tid])
-            for tid in all_task_ids
-        }
-
-        return cls(
-            datasets=datasets,
-            out=d["out"],
-            seed=d["seed"],
-            dedup=d["dedup"],
-            max_total=d["max_total"],
-            llm_model=d["llm_model"],
-            llm_api_key_env=d["llm_api_key_env"],
-            llm_base_url=d.get("llm_base_url"),
-            tasks=task_specs,
-            max_concurrency=d.get("max_concurrency", 30),
-            hindsight=d.get("hindsight", False),
-        )
+    return AsyncOpenAI(**kwargs)
 
 
-def load_config(path: Path) -> SFTConfig:
-    with open(path, encoding="utf-8") as f:
-        return SFTConfig.from_dict(yaml.safe_load(f))
-
-
-def _make_turn_completion(thought: str, talk: str, action: dict) -> str:
-    action_json = json.dumps(action, ensure_ascii=False)
-    return (
-        f"<thought>{thought}</thought>\n"
-        f"<talk>{talk}</talk>\n"
-        f"<action>{action_json}</action>"
+def _make_retry_decorator(config: GenerateConfig):
+    """Build a tenacity retry decorator from config values."""
+    return retry(
+        stop=stop_after_attempt(config.max_retries),
+        wait=wait_exponential(
+            multiplier=1,
+            min=config.retry_min_wait,
+            max=config.retry_max_wait,
+        ),
+        retry=retry_if_exception_type((APIError, RateLimitError, APIConnectionError)),
+        before_sleep=before_sleep_log(log, logging.WARNING),
+        reraise=True,
     )
 
 
-def _compute_per_task_caps(
-    tasks: list[str],
-    task_weights: dict[str, float],
-    available: dict[str, int],
-    max_total: int,
-) -> dict[str, int]:
-    weights = {t: task_weights[t] for t in tasks}
-    total_weight = sum(weights.values())
-    quotas = {t: (weights[t] / total_weight) * max_total for t in tasks}
-    remaining = max_total
-    caps: dict[str, int] = {}
-    for t in tasks:
-        caps[t] = min(int(quotas[t]), available.get(t, 0))
-        remaining -= caps[t]
-    if remaining > 0:
-        eligible = sorted(
-            [t for t in tasks if available.get(t, 0) > caps[t]],
-            key=lambda t: -weights[t],
+async def call_completion(
+    client: AsyncOpenAI,
+    messages: list[dict],
+    model: str,
+    temperature: float,
+    config: GenerateConfig,
+) -> str:
+    """Call the OpenAI chat completions API for a single request.
+
+    Retries on transient API errors using exponential backoff as
+    configured in the generate config.
+    """
+    retry_decorator = _make_retry_decorator(config)
+
+    @retry_decorator
+    async def _inner():
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
         )
-        for t in eligible:
-            extra = min(remaining, available.get(t, 0) - caps[t])
-            caps[t] += extra
-            remaining -= extra
-            if remaining == 0:
-                break
-    return caps
+        return resp.choices[0].message.content
+
+    return await _inner()
 
 
-def generate(cfg: SFTConfig) -> None:
-    all_task_ids = list(cfg.tasks.keys())
-    unknown = set(all_task_ids) - set(ALL_TASK_GENERATORS)
-    if unknown:
-        raise ValueError(f"Unknown tasks: {unknown}. Valid: {ALL_TASKS}")
+async def run_batch_completions(
+    client: AsyncOpenAI,
+    requests: list[dict],
+    config: GenerateConfig,
+    semaphore: asyncio.Semaphore | None = None,
+) -> dict[int, str]:
+    """Run multiple completion requests concurrently with bounded parallelism.
 
-    out_path = Path(cfg.out)
-    task_weights = {t: cfg.tasks[t].weight for t in all_task_ids}
+    Returns a dict mapping each request's turn_idx to the raw response text.
+    When *semaphore* is provided (e.g. a global one shared across conversations),
+    it is used instead of creating a per-batch semaphore.
+    """
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(config.max_concurrent)
 
-    rng = random.Random(cfg.seed)
+    async def _limited(req: dict) -> tuple[int, str | None]:
+        async with semaphore:
+            try:
+                text = await call_completion(
+                    client, req["messages"], config.model, config.temperature, config
+                )
+                return req["turn_idx"], text
+            except Exception:
+                log.warning(
+                    "Completion failed for turn %d after retries", req["turn_idx"]
+                )
+                return req["turn_idx"], None
 
-    raw_rows_by_task: dict[str, list] = {}
+    results = await asyncio.gather(*[_limited(r) for r in requests])
+    return {turn_idx: text for turn_idx, text in results}
 
-    for ds_name, ds_spec in cfg.datasets.items():
-        if ds_name not in DATASET_HANDLERS:
-            raise ValueError(
-                f"Unknown dataset: {ds_name}. Valid: {list(DATASET_HANDLERS)}"
+
+async def annotate_agent(
+    client: AsyncOpenAI,
+    chat_logs: list[dict],
+    participant_info: dict,
+    agent_id: str,
+    config: GenerateConfig,
+    semaphore: asyncio.Semaphore | None = None,
+) -> tuple[list[dict], list[list[dict]]]:
+    """Run GPT annotation for a single agent and return merged SFT messages
+    together with the OpenAI prompts that were used for annotation.
+
+    Returns (sft_messages, external_prompts) where external_prompts is a list
+    of message lists -- one per annotation request sent to the API.
+    """
+    reqs = build_annotation_requests(chat_logs, participant_info, agent_id)
+
+    raw_responses = await run_batch_completions(client, reqs, config, semaphore)
+
+    annotations: dict[int, dict] = {}
+    for req in reqs:
+        turn_idx = req["turn_idx"]
+        text = raw_responses.get(turn_idx)
+        if text is None:
+            log.warning("No response for turn %d, agent %s", turn_idx, agent_id)
+            continue
+
+        thought = parse_tag_content(text, "<thought>", "</thought>")
+        talk = (
+            parse_tag_content(text, "<talk>", "</talk>") if req["needs_talk"] else None
+        )
+
+        if req["needs_talk"] and talk is None:
+            log.warning(
+                "GPT returned no <talk> for structural turn %d, agent %s",
+                turn_idx,
+                agent_id,
             )
-        handler = DATASET_HANDLERS[ds_name](ds_spec.path)
-        instances = handler.get_instances()
-        logger.info(
-            "Loaded %d instances from %s (%s)", len(instances), ds_spec.path, ds_name
-        )
 
-        for task_id in tqdm(ds_spec.tasks, desc=f"Tasks ({ds_name})", unit="task"):
-            rows = ALL_TASK_GENERATORS[task_id](instances)
-            if cfg.dedup:
-                seen: set[str] = set()
-                deduped = []
-                for row in rows:
-                    key = row["prompt"]
-                    if key not in seen:
-                        seen.add(key)
-                        deduped.append(row)
-                logger.debug("%s dedup: %d -> %d", task_id, len(rows), len(deduped))
-                rows = deduped
-            raw_rows_by_task[task_id] = rows
+        annotations[turn_idx] = {"thought": thought, "talk": talk}
 
-    raw_rows: list[dict] = []
-    for task_id in all_task_ids:
-        raw_rows.extend(raw_rows_by_task.get(task_id, []))
-    logger.info("Total after dedup: %d examples", len(raw_rows))
-
-    if cfg.max_total is not None and cfg.max_total < len(raw_rows):
-        available = {t: len(raw_rows_by_task.get(t, [])) for t in all_task_ids}
-        caps = _compute_per_task_caps(
-            all_task_ids, task_weights, available, cfg.max_total
-        )
-        sampled: list = []
-        for task_id in all_task_ids:
-            pool = raw_rows_by_task.get(task_id, [])
-            cap = caps[task_id]
-            if len(pool) > cap:
-                pool = rng.sample(pool, cap)
-            sampled.extend(pool)
-            logger.info(
-                "%s: %d -> %d (cap %d)", task_id, available[task_id], len(pool), cap
-            )
-        rng.shuffle(sampled)
-        raw_rows = sampled
-        logger.info("After cap (%d): %d examples", cfg.max_total, len(raw_rows))
-
-    logger.info("%d turn rows — generating LLM thoughts (hindsight=%s)", len(raw_rows), cfg.hindsight)
-
-    if cfg.hindsight:
-        llm_gen = AsyncHindsightThoughtGenerator(
-            model=cfg.llm_model,
-            api_key_env=cfg.llm_api_key_env,
-            max_concurrency=cfg.max_concurrency,
-            base_url=cfg.llm_base_url,
-        )
-    else:
-        llm_gen = AsyncLLMThoughtGenerator(
-            model=cfg.llm_model,
-            api_key_env=cfg.llm_api_key_env,
-            max_concurrency=cfg.max_concurrency,
-        )
-    results = asyncio.run(llm_gen.generate_batch(raw_rows))
-    for row, result in zip(raw_rows, results):
-        if len(result) == 3:
-            thought, source, raw_prompt = result
-            row["_raw_prompt"] = raw_prompt
-        else:
-            thought, source = result
-        row["_llm_thought"] = thought
-        row["_llm_source"] = source
-    logger.info("LLM batch complete: %d thoughts generated", len(results))
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    written = 0
-    skipped = 0
-    with out_path.open("w", encoding="utf-8") as f:
-        for row in tqdm(raw_rows, desc="Writing output", unit="ex"):
-            thought = row.get("_llm_thought")
-            if not thought:
-                skipped += 1
-                continue
-            source = row.get("_llm_source", "llm")
-            completion = _make_turn_completion(thought, row["talk"], row["action"])
-
-            wrapped_prompt = (
-                "<|im_start|>user\n"
-                + row["prompt"].strip()
-                + "<|im_end|>\n<|im_start|>assistant\n"
-            )
-            record: dict = {
-                "task": row["task"],
-                "prompt": wrapped_prompt,
-                "completion": completion,
-                "thought_source": source,
-            }
-            if "_raw_prompt" in row:
-                record["raw_hindsight_prompt"] = row["_raw_prompt"]
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            written += 1
-
-    if skipped:
-        logger.warning("Skipped %d turn rows without LLM thoughts", skipped)
-    logger.info("Wrote %d examples to %s", written, out_path)
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s"
-    )
-    logging.getLogger("openai").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    cfg = load_config(Path("rl/configs/sft_generate.yaml"))
-    generate(cfg)
+    sft_messages = merge_annotations(chat_logs, participant_info, agent_id, annotations)
+    external_prompts = [req["messages"] for req in reqs]
+    return sft_messages, external_prompts

@@ -1,262 +1,176 @@
-from __future__ import annotations
-
 import json
 import logging
-from datetime import datetime
-from pathlib import Path
+import os
+from dataclasses import asdict
 
 import torch
 from datasets import Dataset
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, set_peft_model_state_dict
-from safetensors.torch import load_file as load_safetensors
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForSeq2Seq, Trainer, TrainingArguments
+from peft import LoraConfig as PeftLoraConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback
+from trl import SFTConfig as TrlSFTConfig
+from trl import SFTTrainer
 
-from rl.config import SFTTrainConfig, load_train_config
+from rl.config import TrainingConfig
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
-LOG_DIR = Path("logs")
-RUNS_DIR = Path("runs")
+METRICS_FILENAME = "train_metrics.jsonl"
+
+class JSONLLoggingCallback(TrainerCallback):
+    """Append each training log entry as a JSON line to a file."""
+
+    def __init__(self, log_path: str):
+        self.log_path = log_path
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs is None:
+            return
+        entry = {"global_step": state.global_step, **logs}
+        with open(self.log_path, "a") as f:
+            f.write(json.dumps(entry) + "\n")
 
 
-def setup_logging() -> str:
-    """Configure root logger to write to both stderr and a timestamped log file.
+DTYPE_MAP = {
+    "float16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "float32": torch.float32,
+}
 
-    Returns the timestamp string so callers can reuse it for the run directory.
+
+def load_sft_dataset(jsonl_path: str) -> Dataset:
+    """Load a JSONL file produced by the annotation pipeline into an HF Dataset.
+
+    Each line must contain a ``messages`` field holding an OpenAI-style list
+    of ``{"role": ..., "content": ...}`` dicts.  Only the ``messages`` column
+    is kept so SFTTrainer auto-detects the conversational format.
     """
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = LOG_DIR / f"sft_train_{timestamp}.log"
-
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
-
-    fmt = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
-
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    console.setFormatter(fmt)
-    root.addHandler(console)
-
-    fh = logging.FileHandler(log_file, mode="a")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(fmt)
-    root.addHandler(fh)
-
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("transformers").setLevel(logging.WARNING)
-    logging.getLogger("accelerate").setLevel(logging.WARNING)
-
-    logging.getLogger(__name__).info("Logging to %s", log_file.resolve())
-    return timestamp
-
-
-def load_jsonl(path: str | Path, tasks: list[str] | None = None) -> list[dict]:
-    rows = []
-    with open(path, encoding="utf-8") as f:
+    rows: list[dict] = []
+    with open(jsonl_path, encoding="utf-8") as f:
         for line in f:
-            row = json.loads(line)
-            if tasks is None or row.get("task") in tasks:
-                rows.append(row)
-    return rows
-
-
-def tokenise_dataset(rows: list[dict], tokenizer, max_seq_length: int):
-    def _tokenise(row: dict) -> dict:
-        full = row["prompt"].rstrip() + "\n" + row["completion"]
-        prompt_only = row["prompt"].rstrip() + "\n"
-
-        full_ids = tokenizer(
-            full,
-            truncation=True,
-            max_length=max_seq_length,
-            padding=False,
-            return_tensors=None,
-        )["input_ids"]
-
-        prompt_ids = tokenizer(
-            prompt_only,
-            truncation=True,
-            max_length=max_seq_length,
-            padding=False,
-            return_tensors=None,
-        )["input_ids"]
-
-        prompt_len = 0
-        for i, (p, f) in enumerate(zip(prompt_ids, full_ids)):
-            if p == f:
-                prompt_len = i + 1
-            else:
-                break
-        labels = ([-100] * prompt_len + full_ids[prompt_len:])[:max_seq_length]
-        return {"input_ids": full_ids[:max_seq_length], "labels": labels}
-
-    return Dataset.from_list([_tokenise(r) for r in rows])
-
-
-def train(cfg: SFTTrainConfig, run_timestamp: str | None = None) -> None:
-    t = cfg.training
-
-    timestamp = run_timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = RUNS_DIR / f"sft_train_{timestamp}"
-    run_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Run directory: %s", run_dir.resolve())
-    
-    # Configure quantization if needed
-    quantization_config = None
-    if t.load_in_4bit:
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_use_double_quant=True,
-        )
-    
-    # Load base model — model_name always points to the base pretrained model.
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name,
-        quantization_config=quantization_config,
-        device_map="auto",
-        trust_remote_code=True,
-    )
-
-    # Tokenizer comes from the base model regardless of whether an adapter is used.
-    tokenizer = AutoTokenizer.from_pretrained(
-        cfg.model_name,
-        trust_remote_code=True,
-    )
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "right"
-
-    if t.load_in_4bit:
-        model = prepare_model_for_kbit_training(model)
-
-    model.config.use_cache = False
-
-    if cfg.adapter_path:
-        logger.info("Loading existing LoRA adapter from %s", cfg.adapter_path)
-        saved_lora_config = LoraConfig.from_pretrained(cfg.adapter_path)
-        saved_lora_config.inference_mode = False
-        if cfg.lora.rank != saved_lora_config.r:
-            logger.warning(
-                "lora.rank=%d in config is ignored when resuming from an adapter; "
-                "using rank=%d from the loaded checkpoint.",
-                cfg.lora.rank,
-                saved_lora_config.r,
-            )
-        model = get_peft_model(model, saved_lora_config)
-        adapter_weights = load_safetensors(
-            str(Path(cfg.adapter_path) / "adapter_model.safetensors")
-        )
-        set_peft_model_state_dict(model, adapter_weights)
-        logger.info(
-            "Resuming LoRA (rank=%d, alpha=%d)",
-            saved_lora_config.r,
-            saved_lora_config.lora_alpha,
-        )
-    else:
-        logger.info("Initialising fresh LoRA (rank=%d, alpha=%d)", cfg.lora.rank, cfg.lora.alpha)
-        peft_config = LoraConfig(
-            r=cfg.lora.rank,
-            lora_alpha=cfg.lora.alpha,
-            lora_dropout=cfg.lora.dropout,
-            target_modules=["q_proj", "v_proj", "down_proj"],
-            bias="none",
-            task_type="CAUSAL_LM",
-        )
-        model = get_peft_model(model, peft_config)
-
-    rows = load_jsonl(cfg.data, tasks=cfg.tasks)
+            record = json.loads(line)
+            rows.append({"messages": record["messages"]})
     if not rows:
-        raise ValueError(f"No examples loaded from {cfg.data} (tasks={cfg.tasks})")
-    logger.info("Training on %d examples", len(rows))
+        raise ValueError(f"No examples found in {jsonl_path}")
+    log.info("Loaded %d SFT examples from %s", len(rows), jsonl_path)
+    return Dataset.from_list(rows)
 
-    # Save run metadata and the raw training examples used.
-    with (run_dir / "run_meta.json").open("w") as f:
-        json.dump(
-            {
-                "timestamp": timestamp,
-                "model_name": cfg.model_name,
-                "adapter_path": cfg.adapter_path,
-                "data": str(cfg.data),
-                "tasks": cfg.tasks,
-                "n_examples": len(rows),
-                "lora": {"rank": cfg.lora.rank, "alpha": cfg.lora.alpha, "dropout": cfg.lora.dropout},
-                "training": {
-                    "epochs": t.epochs,
-                    "lr": t.lr,
-                    "batch_size": t.batch_size,
-                    "grad_accum": t.grad_accum,
-                    "max_seq_length": t.max_seq_length,
-                },
-            },
-            f,
-            indent=2,
+
+def load_model_and_tokenizer(
+    config: TrainingConfig,
+) -> tuple[AutoModelForCausalLM, AutoTokenizer]:
+    """Load the base causal LM and its tokenizer from the training config."""
+    model_cfg = config.model
+    if model_cfg.hf_home:
+        os.environ["HF_HOME"] = model_cfg.hf_home
+
+    dtype = DTYPE_MAP.get(model_cfg.dtype, torch.float16)
+
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            pretrained_model_name_or_path=model_cfg.name,
+            torch_dtype=dtype,
+            device_map="auto",
         )
+        tokenizer = AutoTokenizer.from_pretrained(
+            pretrained_model_name_or_path=model_cfg.name,
+        )
+    except Exception:
+        log.error("Failed to load model or tokenizer: %s", model_cfg.name)
+        raise
 
-    training_data_path = run_dir / "training_data.jsonl"
-    with training_data_path.open("w") as f:
-        for row in rows:
-            f.write(json.dumps(row) + "\n")
-    logger.info("Saved %d training examples to %s", len(rows), training_data_path)
+    return model, tokenizer
 
-    dataset = tokenise_dataset(rows, tokenizer, t.max_seq_length)
 
-    out_dir = Path(cfg.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+QWEN_CHAT_TEMPLATE_WITH_GENERATION = (
+    "{%- for message in messages %}"
+    "{%- if message['role'] == 'system' %}"
+    "{{- '<|im_start|>system\n' + message['content'] + '<|im_end|>\n' }}"
+    "{%- elif message['role'] == 'user' %}"
+    "{{- '<|im_start|>user\n' + message['content'] + '<|im_end|>\n' }}"
+    "{%- elif message['role'] == 'assistant' %}"
+    "{{- '<|im_start|>assistant\n' }}"
+    "{% generation %}"
+    "{{ message['content'] }}"
+    "{% endgeneration %}"
+    "{{- '<|im_end|>\n' }}"
+    "{%- endif %}"
+    "{%- endfor %}"
+    "{%- if add_generation_prompt %}"
+    "{{- '<|im_start|>assistant\n' }}"
+    "{%- endif %}"
+)
 
-    collator = DataCollatorForSeq2Seq(tokenizer, padding=True)
 
-    trainer = Trainer(
+def _patch_chat_template_for_generation(tokenizer: AutoTokenizer) -> None:
+    """Replace the chat template with one that includes ``{% generation %}`` markers.
+
+    Qwen 2.5's default template lacks the ``{% generation %}`` /
+    ``{% endgeneration %}`` keywords that TRL requires for
+    ``assistant_only_loss=True``.
+    """
+    template = tokenizer.chat_template or ""
+    if "{% generation %}" not in template:
+        tokenizer.chat_template = QWEN_CHAT_TEMPLATE_WITH_GENERATION
+        log.info("Set chat template with {%% generation %%} markers for assistant_only_loss")
+
+
+def build_trainer(
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    config: TrainingConfig,
+    train_dataset: Dataset,
+    eval_dataset: Dataset | None = None,
+) -> SFTTrainer:
+    """Construct an SFTTrainer from the training config.
+
+    Reads SFT hyperparameters (including ``assistant_only_loss`` and
+    ``eos_token`` for Qwen-style chat templates) and LoRA settings from
+    the typed config and returns a ready-to-train SFTTrainer instance.
+    """
+    sft_kwargs = asdict(config.sft)
+    eos_token = sft_kwargs.pop("eos_token", None)
+
+    if eos_token:
+        tokenizer.eos_token = eos_token
+
+    if sft_kwargs.get("assistant_only_loss"):
+        _patch_chat_template_for_generation(tokenizer)
+
+    training_args = TrlSFTConfig(**sft_kwargs)
+    peft_config = PeftLoraConfig(**asdict(config.lora))
+
+    os.makedirs(training_args.output_dir, exist_ok=True)
+    metrics_path = os.path.join(training_args.output_dir, METRICS_FILENAME)
+
+    return SFTTrainer(
         model=model,
-        train_dataset=dataset,
-        tokenizer=tokenizer,
-        data_collator=collator,
-        args=TrainingArguments(
-            output_dir=str(out_dir),
-            num_train_epochs=t.epochs,
-            per_device_train_batch_size=t.batch_size,
-            gradient_accumulation_steps=t.grad_accum,
-            gradient_checkpointing=False,
-            learning_rate=t.lr,
-            warmup_ratio=t.warmup_ratio,
-            lr_scheduler_type="cosine",
-            fp16=True,
-            bf16=False,
-            logging_steps=10,
-            save_steps=t.save_steps,
-            save_total_limit=2,
-            seed=cfg.seed,
-            report_to="none",
-            remove_unused_columns=False,
-        ),
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        processing_class=tokenizer,
+        peft_config=peft_config,
+        callbacks=[JSONLLoggingCallback(metrics_path)],
     )
 
-    trainer.train()
 
-    adapter_dir = out_dir / "adapter"
-    model.save_pretrained(str(adapter_dir))
-    tokenizer.save_pretrained(str(adapter_dir))
-    logger.info("LoRA adapter saved to %s", adapter_dir)
+def run_training(trainer: SFTTrainer, resume_from: str | None = None):
+    """Execute the training loop, optionally resuming from a checkpoint.
 
-    peft_cfg = model.peft_config["default"]
-    with (out_dir / "train_meta.json").open("w") as f:
-        json.dump(
-            {
-                "model_name": cfg.model_name,
-                "adapter_path": cfg.adapter_path,
-                "tasks": cfg.tasks,
-                "n_examples": len(rows),
-                "lora_rank": peft_cfg.r,
-                "lora_alpha": peft_cfg.lora_alpha,
-                "epochs": t.epochs,
-                "lr": t.lr,
-            },
-            f,
-            indent=2,
-        )
+    Args:
+        trainer: A fully configured SFTTrainer.
+        resume_from: ``None`` to train from scratch, ``"latest"`` to
+            auto-detect the most recent checkpoint in ``output_dir``,
+            or an explicit checkpoint directory path.
+    """
+    if resume_from == "latest":
+        resume_from_checkpoint = True
+    elif resume_from:
+        resume_from_checkpoint = resume_from
+    else:
+        resume_from_checkpoint = None
 
-
-if __name__ == "__main__":
-    _timestamp = setup_logging()
-    train(load_train_config(Path("rl/configs/sft_train.yaml")), run_timestamp=_timestamp)
+    try:
+        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+    except Exception:
+        log.error("Training failed")
+        raise

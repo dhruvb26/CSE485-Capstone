@@ -1,0 +1,26 @@
+mode: local
+temperature: 0.7
+max_instances: 1
+
+api:
+  model: "gpt-4o"
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: "OPENROUTER_API_KEY"
+  max_retries: 5
+  retry_min_wait: 2
+  retry_max_wait: 60
+  max_concurrent: 10
+
+local:
+  model: "Qwen/Qwen2.5-72B-Instruct"
+  base_url: "http://localhost:8000/v1"
+  max_retries: 3
+  retry_min_wait: 1
+  retry_max_wait: 10
+  max_concurrent: 64
+
+datasets:
+  casino:
+    path: data/casino/ca.train.csv
+
+output_jsonl: "data/sft/train.jsonl"
