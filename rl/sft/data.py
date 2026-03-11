@@ -298,10 +298,9 @@ def merge_annotations(
     participant_info: dict,
     agent_id: str,
     annotations: dict[int, dict],
-    sample_id: str | None = None,
 ) -> list[dict]:
     """Build the final SFT messages list with <thought> (and optionally <talk>) filled from annotations."""
-    tag = sample_id or agent_id
+
     messages = [
         {"role": "system", "content": build_system_prompt(participant_info, agent_id)}
     ]
