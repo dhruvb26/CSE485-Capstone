@@ -177,3 +177,6 @@ def run_training(trainer: SFTTrainer, resume_from: str | None = None):
     except Exception:
         log.error("Training failed")
         raise
+
+    trainer.save_model()
+    log.info("Final model saved to %s", trainer.args.output_dir)

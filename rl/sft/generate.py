@@ -238,4 +238,4 @@ async def annotate_agent(
         thought_prefix = f"<thought>{thought}</thought> " if thought else ""
         history_lines.append(f"You: {thought_prefix}{rendered}")
 
-    return merge_annotations(chat_logs, participant_info, agent_id, annotations, sample_id=sample_id)
+    return merge_annotations(chat_logs, participant_info, agent_id, annotations)
