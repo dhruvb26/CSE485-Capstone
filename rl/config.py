@@ -75,36 +75,20 @@ class ModelConfig:
 
 
 @dataclass
-class SFTConfig:
-    output_dir: str
-    max_steps: int
-    per_device_train_batch_size: int
-    per_device_eval_batch_size: int
-    learning_rate: float
-    logging_steps: int
-    save_steps: int
-    eval_strategy: str
-    eval_steps: int
-    max_length: int
-    assistant_only_loss: bool
-    eos_token: str
+class SFTRawConfig:
+    """Thin wrapper around the raw ``sft:`` YAML section.
+
+    All keys are forwarded directly to ``trl.SFTConfig`` (which extends
+    ``transformers.TrainingArguments``), so any field supported by TRL or
+    HF TrainingArguments can be specified in the YAML without changing
+    this class.
+    """
+
+    raw: dict
 
     @classmethod
-    def from_dict(cls, d: dict) -> SFTConfig:
-        return cls(
-            output_dir=d["output_dir"],
-            max_steps=d["max_steps"],
-            per_device_train_batch_size=d["per_device_train_batch_size"],
-            per_device_eval_batch_size=d.get("per_device_eval_batch_size", 1),
-            learning_rate=d["learning_rate"],
-            logging_steps=d["logging_steps"],
-            save_steps=d["save_steps"],
-            eval_strategy=d["eval_strategy"],
-            eval_steps=d["eval_steps"],
-            max_length=d["max_length"],
-            assistant_only_loss=d.get("assistant_only_loss", False),
-            eos_token=d.get("eos_token", ""),
-        )
+    def from_dict(cls, d: dict) -> SFTRawConfig:
+        return cls(raw=dict(d))
 
 
 @dataclass
@@ -131,7 +115,7 @@ class LoraConfig:
 @dataclass
 class TrainingConfig:
     model: ModelConfig
-    sft: SFTConfig
+    sft: SFTRawConfig
     lora: LoraConfig
     data_path: str
     val_split: float
@@ -141,7 +125,7 @@ class TrainingConfig:
     def from_dict(cls, d: dict) -> TrainingConfig:
         return cls(
             model=ModelConfig.from_dict(d["model"]),
-            sft=SFTConfig.from_dict(d["sft"]),
+            sft=SFTRawConfig.from_dict(d["sft"]),
             lora=LoraConfig.from_dict(d["lora"]),
             data_path=d["data_path"],
             val_split=d.get("val_split", 0.0),

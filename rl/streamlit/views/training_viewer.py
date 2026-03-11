@@ -3,9 +3,9 @@ import os
 import pandas as pd
 import streamlit as st
 
-from rl.sft.train import METRICS_FILENAME
 from rl.streamlit.data_loader import load_train_metrics
 
+METRICS_FILENAME = "train_metrics.jsonl"
 DEFAULT_OUTPUT_DIR = "checkpoints/sft-tuned"
 
 TRAIN_COLOR = "#1f77b4"

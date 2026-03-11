@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -27,9 +28,26 @@ log = logging.getLogger(__name__)
 
 
 async def run_annotation(config: GenerateConfig):
-    """Annotate all datasets concurrently and write ordered JSONL."""
+    """Annotate all datasets concurrently and write ordered JSONL.
+
+    Handles SIGINT gracefully: in-flight API calls are allowed to finish,
+    no new tasks are started, and all completed results are saved.
+    """
     client = create_openai_client(config)
     os.makedirs(os.path.dirname(config.output_jsonl) or ".", exist_ok=True)
+
+    shutdown_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    original_handler = signal.getsignal(signal.SIGINT)
+
+    def _request_shutdown():
+        if shutdown_event.is_set():
+            log.warning("Second interrupt — forcing exit")
+            raise KeyboardInterrupt
+        log.warning("Interrupt received — finishing in-flight calls then saving…")
+        shutdown_event.set()
+
+    loop.add_signal_handler(signal.SIGINT, _request_shutdown)
 
     tasks: list[tuple[int, str, int, list[dict], dict, str]] = []
     conv_count = 0
@@ -45,47 +63,69 @@ async def run_annotation(config: GenerateConfig):
 
         for row_idx, chat_logs, participant_info, agent_ids in conversations:
             for agent_id in agent_ids:
-                tasks.append((task_idx, ds_name, row_idx, chat_logs, participant_info, agent_id))
+                tasks.append(
+                    (task_idx, ds_name, row_idx, chat_logs, participant_info, agent_id)
+                )
                 task_idx += 1
             conv_count += 1
 
         if config.max_instances is not None and conv_count >= config.max_instances:
             break
 
-    semaphore = asyncio.Semaphore(config.max_concurrent)
+    agent_semaphore = asyncio.Semaphore(config.max_concurrent)
     pbar = tqdm(total=len(tasks), desc="Processing", unit="agent")
 
     async def _process(idx, ds_name, row_idx, chat_logs, participant_info, agent_id):
-        try:
-            sft_messages, external_prompts = await annotate_agent(
-                client, chat_logs, participant_info, agent_id, config, semaphore
-            )
-        except Exception:
-            log.warning(
-                "Annotation failed for row %d, agent %s — skipping",
-                row_idx, agent_id,
-            )
-            return None
-        finally:
+        sample_id = f"{ds_name}_{row_idx}_{agent_id}"
+
+        if shutdown_event.is_set():
             pbar.update(1)
+            return None
 
-        if sft_messages and sft_messages[-1]["role"] == "assistant":
-            inference_prompt = sft_messages[:-1]
-        else:
-            inference_prompt = sft_messages
+        async with agent_semaphore:
+            if shutdown_event.is_set():
+                pbar.update(1)
+                return None
 
-        return (idx, {
-            "id": f"{ds_name}_{row_idx}_{agent_id}",
-            "dataset": ds_name,
-            "row_idx": row_idx,
-            "agent_id": agent_id,
-            "messages": sft_messages,
-            "inference_prompt": inference_prompt,
-            "external_prompts": external_prompts,
-        })
+            try:
+                sft_messages = await annotate_agent(
+                    client,
+                    chat_logs,
+                    participant_info,
+                    agent_id,
+                    config,
+                    sample_id=sample_id,
+                    shutdown_event=shutdown_event,
+                )
+            except Exception:
+                log.warning(
+                    "Annotation failed for row %d, agent %s — skipping",
+                    row_idx,
+                    agent_id,
+                )
+                return None
+            finally:
+                pbar.update(1)
 
-    results = await asyncio.gather(*[_process(*t) for t in tasks])
-    pbar.close()
+        return (
+            idx,
+            {
+                "id": sample_id,
+                "dataset": ds_name,
+                "row_idx": row_idx,
+                "agent_id": agent_id,
+                "messages": sft_messages,
+            },
+        )
+
+    try:
+        results = await asyncio.gather(*[_process(*t) for t in tasks])
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        results = []
+    finally:
+        pbar.close()
+        loop.remove_signal_handler(signal.SIGINT)
+        signal.signal(signal.SIGINT, original_handler)
 
     records = sorted([r for r in results if r is not None], key=lambda r: r[0])
 
@@ -93,9 +133,17 @@ async def run_annotation(config: GenerateConfig):
         for _, record in records:
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    log.info(
-        "Annotations saved to %s (%d conversations)", config.output_jsonl, conv_count
-    )
+    n = len(records)
+    total = len(tasks)
+    if shutdown_event.is_set():
+        log.warning(
+            "Interrupted — saved %d/%d completed samples to %s",
+            n,
+            total,
+            config.output_jsonl,
+        )
+    else:
+        log.warning("Annotations saved to %s (%d samples)", config.output_jsonl, n)
 
 
 def main_generate():
@@ -115,7 +163,9 @@ def main_train():
         eval_dataset = split["test"]
         log.warning(
             "Split dataset: %d train, %d val (%.0f%% val)",
-            len(train_dataset), len(eval_dataset), config.val_split * 100,
+            len(train_dataset),
+            len(eval_dataset),
+            config.val_split * 100,
         )
     else:
         train_dataset = full_dataset
@@ -130,7 +180,9 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("generate", help="Run GPT annotation to produce SFT data")
-    subparsers.add_parser("train", help="Run SFT training with LoRA on the generated data")
+    subparsers.add_parser(
+        "train", help="Run SFT training with LoRA on the generated data"
+    )
     args = parser.parse_args()
 
     if args.command == "generate":
