@@ -18,9 +18,11 @@ from tenacity import (
 
 from rl.config import GenerateConfig
 from rl.sft.data import (
-    build_annotation_requests,
+    STRUCTURAL,
+    build_annotation_context,
     merge_annotations,
     parse_tag_content,
+    render_turn,
 )
 
 log = logging.getLogger(__name__)
@@ -122,40 +124,118 @@ async def annotate_agent(
     participant_info: dict,
     agent_id: str,
     config: GenerateConfig,
-    semaphore: asyncio.Semaphore | None = None,
-) -> tuple[list[dict], list[list[dict]]]:
-    """Run GPT annotation for a single agent and return merged SFT messages
-    together with the OpenAI prompts that were used for annotation.
+    sample_id: str | None = None,
+    shutdown_event: asyncio.Event | None = None,
+) -> list[dict]:
+    """Run GPT annotation for a single agent sequentially so that each turn's
+    prompt includes the agent's previously generated thoughts.
 
-    Returns (sft_messages, external_prompts) where external_prompts is a list
-    of message lists -- one per annotation request sent to the API.
+    Callers should limit concurrency at the agent level (e.g. via a
+    semaphore around this call) so that at most ``max_concurrent`` agents
+    run in parallel — each one making sequential API calls.
+
+    If *shutdown_event* is set, stops after the current in-flight call and
+    returns partial results.
     """
-    reqs = build_annotation_requests(chat_logs, participant_info, agent_id)
+    tag = sample_id or agent_id
+    gpt_system, priorities_str = build_annotation_context(participant_info, agent_id)
 
-    raw_responses = await run_batch_completions(client, reqs, config, semaphore)
-
+    history_lines: list[str] = []
     annotations: dict[int, dict] = {}
-    for req in reqs:
-        turn_idx = req["turn_idx"]
-        text = raw_responses.get(turn_idx)
-        if text is None:
-            log.warning("No response for turn %d, agent %s", turn_idx, agent_id)
+
+    for idx, turn in enumerate(chat_logs):
+        is_me = turn["id"] == agent_id
+        text = turn["text"]
+        _, _, rendered = render_turn(turn, agent_id)
+
+        if not is_me:
+            history_lines.append(f"Them: {rendered}")
             continue
 
-        thought = parse_tag_content(text, "<thought>", "</thought>")
-        talk = (
-            parse_tag_content(text, "<talk>", "</talk>") if req["needs_talk"] else None
+        if shutdown_event is not None and shutdown_event.is_set():
+            log.info("Shutdown requested — returning partial annotations for %s", tag)
+            break
+
+        is_structural = text in STRUCTURAL
+        history_block = (
+            "\n".join(history_lines)
+            if history_lines
+            else "(opening turn - no prior messages)"
         )
 
-        if req["needs_talk"] and talk is None:
-            log.warning(
-                "GPT returned no <talk> for structural turn %d, agent %s",
-                turn_idx,
-                agent_id,
+        user_prompt_parts = [
+            f"Agent priorities:\n{priorities_str}\n",
+            f"Conversation so far:\n{history_block}\n",
+            f"Action taken this turn: {rendered}",
+        ]
+        if not is_structural:
+            user_prompt_parts.append(f'Talk text this turn: "{text}"')
+
+        if is_structural:
+            user_prompt_parts.append(
+                "\nThis is a structural action with no human text. "
+                "Generate both <thought>...</thought> and <talk>...</talk>."
+            )
+        else:
+            user_prompt_parts.append(
+                "\nGenerate only <thought>...</thought> for this turn."
             )
 
-        annotations[turn_idx] = {"thought": thought, "talk": talk}
+        messages = [
+            {"role": "system", "content": gpt_system},
+            {"role": "user", "content": "\n".join(user_prompt_parts)},
+        ]
 
-    sft_messages = merge_annotations(chat_logs, participant_info, agent_id, annotations)
-    external_prompts = [req["messages"] for req in reqs]
-    return sft_messages, external_prompts
+        max_talk_retries = 3
+        thought = None
+        talk = None
+
+        for attempt in range(1, max_talk_retries + 1):
+            try:
+                resp_text = await call_completion(
+                    client, messages, config.model, config.temperature, config
+                )
+            except Exception:
+                log.warning(
+                    "Completion failed for turn %d after retries (sample %s)", idx, tag
+                )
+                resp_text = None
+
+            if resp_text is None:
+                break
+
+            thought = parse_tag_content(resp_text, "<thought>", "</thought>")
+            talk = (
+                parse_tag_content(resp_text, "<talk>", "</talk>")
+                if is_structural
+                else None
+            )
+
+            if not is_structural or talk is not None:
+                break
+
+            if attempt < max_talk_retries:
+                log.warning(
+                    "GPT returned no <talk> for structural turn %d (%s), "
+                    "sample %s — retrying (%d/%d)",
+                    idx, text, tag, attempt, max_talk_retries,
+                )
+
+        if resp_text is None:
+            log.warning("No response for turn %d, sample %s", idx, tag)
+            history_lines.append(f"You: {rendered}")
+            continue
+
+        if is_structural and talk is None:
+            log.warning(
+                "GPT returned no <talk> for structural turn %d (%s), "
+                "sample %s — exhausted %d retries",
+                idx, text, tag, max_talk_retries,
+            )
+
+        annotations[idx] = {"thought": thought, "talk": talk}
+
+        thought_prefix = f"<thought>{thought}</thought> " if thought else ""
+        history_lines.append(f"You: {thought_prefix}{rendered}")
+
+    return merge_annotations(chat_logs, participant_info, agent_id, annotations, sample_id=sample_id)

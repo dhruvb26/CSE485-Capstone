@@ -39,7 +39,7 @@ start_vllm() {
     [[ "$mode" != "local" ]] && return 0
 
     model=$($PYTHON -c "import yaml; print(yaml.safe_load(open('$GENERATE_CFG'))['local']['model'])")
-    port=$($PYTHON -c "import yaml; d=yaml.safe_load(open('$GENERATE_CFG')); print(d['local']['base_url'].rsplit(':',1)[-1].strip('/'))")
+    port=8000
 
     local num_gpus
     num_gpus=$(nvidia-smi -L | wc -l)

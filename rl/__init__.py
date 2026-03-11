@@ -3,11 +3,12 @@ __all__ = [
     "GenerateConfig",
     "TrainingConfig",
     "ModelConfig",
-    "SFTConfig",
+    "SFTRawConfig",
     "LoraConfig",
     "load_generate_config",
     "load_training_config",
     "build_sft_messages",
+    "build_annotation_context",
     "build_annotation_requests",
     "merge_annotations",
     "count_conversations",
@@ -26,7 +27,7 @@ _CONFIG = {
     "GenerateConfig",
     "LoraConfig",
     "ModelConfig",
-    "SFTConfig",
+    "SFTRawConfig",
     "TrainingConfig",
     "load_generate_config",
     "load_training_config",
@@ -37,8 +38,10 @@ _SFT = set(__all__) - _CONFIG
 def __getattr__(name: str):
     if name in _CONFIG:
         from rl import config
+
         return getattr(config, name)
     if name in _SFT:
         from rl import sft
+
         return getattr(sft, name)
     raise AttributeError(f"module 'rl' has no attribute {name!r}")

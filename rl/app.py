@@ -1,3 +1,4 @@
+import importlib
 import sys
 from pathlib import Path
 
@@ -6,21 +7,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import streamlit as st
 
 from rl.streamlit.styles import apply_page_config, inject_custom_styles
-from rl.streamlit.views import dataset_viewer, home, training_viewer
 
 VIEWS = {
     "Home": {
-        "render": home.render,
+        "module": "rl.streamlit.views.home",
         "icon": ":material/home:",
     },
     "Datasets": {
-        "render": dataset_viewer.render,
+        "module": "rl.streamlit.views.dataset_viewer",
         "icon": ":material/dataset:",
         "title": "Datasets",
         "description": "Browse negotiation conversations and compare generated annotations.",
     },
     "Training": {
-        "render": training_viewer.render,
+        "module": "rl.streamlit.views.training_viewer",
         "icon": ":material/show_chart:",
         "title": "Training",
         "description": "Visualize SFT training loss and metrics over time.",
@@ -68,7 +68,8 @@ def main():
             unsafe_allow_html=True,
         )
 
-    meta["render"]()
+    mod = importlib.import_module(meta["module"])
+    mod.render()
 
 
 if __name__ == "__main__":

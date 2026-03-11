@@ -29,7 +29,7 @@ def build_system_prompt(participant_info: dict, agent_id: str) -> str:
     high_pts, med_pts, low_pts = [p[2] for p in priorities]
 
     priorities_str = "\n".join(
-        f"- {issue}: {lvl} priority ({pts} pts each) - Reason: {value2reason.get(lvl, 'N/A')}"
+        f"- {issue} (3 available): {lvl} priority ({pts} pts each) - Reason: {value2reason.get(lvl, 'N/A')}"
         for lvl, issue, pts in priorities
     )
 
@@ -45,7 +45,7 @@ def build_system_prompt(participant_info: dict, agent_id: str) -> str:
     return f"""\
 You are negotiating with your campsite neighbor over extra supply of food, water, and firewood for your camping trip.
 
-There are 3 packages of each item to divide between you and your neighbor.
+There are exactly 3 packages of each item (food, water, firewood) to divide between you and your neighbor. Each item allocation in a deal must be between 0 and 3, and the two parties' allocations for each item must sum to 3.
 
 Your item priorities and point values:
 {priorities_str}
@@ -197,6 +197,35 @@ def build_sft_messages(
     return messages
 
 
+def build_annotation_context(participant_info: dict, agent_id: str) -> tuple[str, str]:
+    """Return the (gpt_system_prompt, priorities_str) used for annotation requests."""
+    value2issue = participant_info[agent_id]["value2issue"]
+    priorities = [
+        (lvl, value2issue[lvl], POINTS[lvl]) for lvl in ("High", "Medium", "Low")
+    ]
+
+    priorities_str = "\n".join(
+        f"- {issue} (3 available): {lvl} priority ({pts} pts each)"
+        for lvl, issue, pts in priorities
+    )
+
+    gpt_system = """\
+    You are a negotiation analyst. Given a camping-supply negotiation, generate a realistic <thought> monologue for the specified agent at a specific turn.
+
+    There are exactly 3 packages of each item (food, water, firewood) to divide between the two parties. Each item allocation must be between 0 and 3, and the two parties' allocations for each item must sum to 3.
+
+    Rules for the <thought>:
+    - When evaluating or proposing a deal, include explicit point arithmetic (e.g. '3 food x 5 pts = 15').
+    - For conversational turns, focus on strategic reasoning and modeling the partner's likely priorities.
+    - State the strategic rationale for the action that was actually taken.
+    - 2-4 sentences.
+
+    If the turn's action is structural (Submit-Deal, Accept-Deal, Reject-Deal, Walk-Away) also generate a short <talk> line the agent might say alongside that action.
+    Otherwise, output ONLY <thought>...</thought> (no <talk>)."""
+
+    return gpt_system, priorities_str
+
+
 def build_annotation_requests(
     chat_logs: list[dict], participant_info: dict, agent_id: str
 ) -> list[dict]:
@@ -204,27 +233,12 @@ def build_annotation_requests(
 
     Each returned dict contains turn_idx, needs_talk (bool), and messages
     (a system+user message list ready for the OpenAI chat completions API).
+
+    NOTE: These requests are independent — they do NOT include prior generated
+    thoughts.  For sequential annotation with thought accumulation, use
+    ``generate.annotate_agent`` directly.
     """
-    value2issue = participant_info[agent_id]["value2issue"]
-    priorities = [
-        (lvl, value2issue[lvl], POINTS[lvl]) for lvl in ("High", "Medium", "Low")
-    ]
-
-    priorities_str = "\n".join(
-        f"- {issue}: {lvl} priority ({pts} pts each)" for lvl, issue, pts in priorities
-    )
-
-    gpt_system = """\
-You are a negotiation analyst. Given a camping-supply negotiation, generate a realistic <thought> monologue for the specified agent at a specific turn.
-
-Rules for the <thought>:
-- Include explicit point arithmetic (e.g. '3 food x 5 pts = 15').
-- Model the partner's likely priorities based on what they have said so far.
-- State the strategic rationale for the action that was actually taken.
-- 2-4 sentences.
-
-If the turn's action is structural (Submit-Deal, Accept-Deal, Reject-Deal, Walk-Away) also generate a short <talk> line the agent might say alongside that action.
-Otherwise, output ONLY <thought>...</thought> (no <talk>)."""
+    gpt_system, priorities_str = build_annotation_context(participant_info, agent_id)
 
     requests = []
     history_lines: list[str] = []
@@ -284,8 +298,10 @@ def merge_annotations(
     participant_info: dict,
     agent_id: str,
     annotations: dict[int, dict],
+    sample_id: str | None = None,
 ) -> list[dict]:
     """Build the final SFT messages list with <thought> (and optionally <talk>) filled from annotations."""
+    tag = sample_id or agent_id
     messages = [
         {"role": "system", "content": build_system_prompt(participant_info, agent_id)}
     ]
@@ -306,13 +322,6 @@ def merge_annotations(
 
             if ann.get("talk") is not None:
                 talk_part = f"<talk>{ann['talk']}</talk>\n"
-            elif turn["text"] in STRUCTURAL:
-                log.warning(
-                    "GPT returned no <talk> for structural turn %d (%s), agent %s",
-                    idx,
-                    turn["text"],
-                    agent_id,
-                )
 
             _append_assistant(messages, f"{thought_str}\n{talk_part}{action_part}")
         else:

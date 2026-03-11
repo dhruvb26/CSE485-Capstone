@@ -1,11 +1,11 @@
-mode: local
-temperature: 0.7
-max_instances: 1
+mode: api
+temperature: 1
+max_instances: 125
 
 api:
-  model: "gpt-4o"
-  base_url: https://openrouter.ai/api/v1
-  api_key_env: "OPENROUTER_API_KEY"
+  model: "gpt-5-mini-2025-08-07"
+  base_url: null
+  api_key_env: "OPENAI_API_KEY"
   max_retries: 5
   retry_min_wait: 2
   retry_max_wait: 60
