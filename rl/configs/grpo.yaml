@@ -23,13 +23,13 @@ grpo:
   num_train_epochs: 3
   per_device_train_batch_size: 4
   gradient_accumulation_steps: 4
-  learning_rate: 5.0e-7
+  learning_rate: 1.0e-6
   warmup_ratio: 0.1
   logging_steps: 5
   save_steps: 50
   max_completion_length: 1024
-  num_generations: 4
-  beta: 0.1
+  num_generations: 8
+  beta: 0.04
   bf16: true
   tf32: true
   gradient_checkpointing: true

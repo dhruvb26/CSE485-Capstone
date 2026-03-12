@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=rl-train
-#SBATCH -p general
-#SBATCH -q private
+#SBATCH -p htc
+#SBATCH -q public
 #SBATCH -A grp_ywang354
 #SBATCH -t 4:00:00
 #SBATCH --gres=gpu:a100:1
