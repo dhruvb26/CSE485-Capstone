@@ -157,3 +157,81 @@ def load_training_config(path: str) -> TrainingConfig:
     except Exception:
         log.error("Failed to parse training config: %s", path)
         raise
+
+@dataclass
+class RolloutConfig:
+    max_turns: int
+    temperature: float
+    top_p: float
+    persona_weights: dict[str, float]
+
+    @classmethod
+    def from_dict(cls, d: dict) -> RolloutConfig:
+        return cls(
+            max_turns=d.get("max_turns", 10),
+            temperature=d.get("temperature", 0.7),
+            top_p=d.get("top_p", 0.9),
+            persona_weights=d.get(
+                "persona_weights",
+                {
+                    "uncompromising": 0.25,
+                    "selfish": 0.25,
+                    "anchoring": 0.25,
+                    "cooperative": 0.25,
+                },
+            ),
+        )
+
+
+@dataclass
+class GRPORawConfig:
+    """Thin wrapper around the raw ``grpo:`` YAML section.
+
+    All keys are forwarded directly to ``trl.GRPOConfig``.
+    """
+
+    raw: dict
+
+    @classmethod
+    def from_dict(cls, d: dict) -> GRPORawConfig:
+        return cls(raw=dict(d))
+
+
+@dataclass
+class GRPOTrainingConfig:
+    model: ModelConfig
+    rollout: RolloutConfig
+    grpo: GRPORawConfig
+    lora: LoraConfig
+    data_path: str
+    sft_checkpoint: str
+    reward_weights: list[float]
+    max_episodes: int | None
+    resume_from: str | None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> GRPOTrainingConfig:
+        return cls(
+            model=ModelConfig.from_dict(d["model"]),
+            rollout=RolloutConfig.from_dict(d.get("rollout", {})),
+            grpo=GRPORawConfig.from_dict(d["grpo"]),
+            lora=LoraConfig.from_dict(d["lora"]),
+            data_path=d["data_path"],
+            sft_checkpoint=d.get("sft_checkpoint", ""),
+            reward_weights=d.get("reward_weights", [0.2, 0.3, 0.5]),
+            max_episodes=d.get("max_episodes"),
+            resume_from=d.get("resume_from"),
+        )
+
+
+def load_grpo_config(path: str) -> GRPOTrainingConfig:
+    """Load GRPO training configuration from a YAML file."""
+    try:
+        with open(path, "r") as f:
+            return GRPOTrainingConfig.from_dict(yaml.safe_load(f))
+    except FileNotFoundError:
+        log.error("GRPO config not found: %s", path)
+        raise
+    except Exception:
+        log.error("Failed to parse GRPO config: %s", path)
+        raise
