@@ -8,7 +8,7 @@ import signal
 from dotenv import load_dotenv
 from tqdm import tqdm
 
-from rl.config import GenerateConfig, load_generate_config, load_grpo_config, load_training_config
+from rl.config import GenerateConfig, load_eval_config, load_generate_config, load_grpo_config, load_training_config
 from rl.sft.data import load_all_conversations
 from rl.sft.generate import annotate_agent, create_openai_client
 from rl.sft.train import (
@@ -266,6 +266,14 @@ def main_grpo():
     run_grpo_training(trainer, resume_from=config.resume_from)
 
 
+def main_eval():
+    config = load_eval_config("rl/configs/eval.yaml")
+
+    from rl.eval.run import run_evaluation
+
+    run_evaluation(config)
+
+
 def main():
     parser = argparse.ArgumentParser(description="RL")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -277,6 +285,9 @@ def main():
     subparsers.add_parser(
         "grpo", help="Run GRPO training with self-play rollouts"
     )
+    subparsers.add_parser(
+        "evaluate", help="Run SysEval CaSiNo evaluation on a trained model"
+    )
     args = parser.parse_args()
 
     if args.command == "generate":
@@ -285,6 +296,8 @@ def main():
         main_train()
     elif args.command == "grpo":
         main_grpo()
+    elif args.command == "evaluate":
+        main_eval()
 
 
 if __name__ == "__main__":

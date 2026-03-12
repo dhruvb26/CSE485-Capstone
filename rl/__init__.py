@@ -8,9 +8,11 @@ __all__ = [
     "RolloutConfig",
     "GRPORawConfig",
     "GRPOTrainingConfig",
+    "EvalConfig",
     "load_generate_config",
     "load_training_config",
     "load_grpo_config",
+    "load_eval_config",
     "build_sft_messages",
     "build_annotation_context",
     "build_annotation_requests",
@@ -34,6 +36,7 @@ __all__ = [
     "load_grpo_model_and_tokenizer",
     "build_grpo_trainer",
     "run_grpo_training",
+    "run_evaluation",
 ]
 
 _CONFIG = {
@@ -46,9 +49,11 @@ _CONFIG = {
     "RolloutConfig",
     "GRPORawConfig",
     "GRPOTrainingConfig",
+    "EvalConfig",
     "load_generate_config",
     "load_training_config",
     "load_grpo_config",
+    "load_eval_config",
 }
 _SFT = {
     "build_sft_messages",
@@ -77,6 +82,9 @@ _GRPO = {
     "build_grpo_trainer",
     "run_grpo_training",
 }
+_EVAL = {
+    "run_evaluation",
+}
 
 
 def __getattr__(name: str):
@@ -92,4 +100,8 @@ def __getattr__(name: str):
         from rl import grpo
 
         return getattr(grpo, name)
+    if name in _EVAL:
+        from rl.eval import run
+
+        return getattr(run, name)
     raise AttributeError(f"module 'rl' has no attribute {name!r}")

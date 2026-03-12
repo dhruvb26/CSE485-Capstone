@@ -1,0 +1,14 @@
+syseval_path: "/Users/dhruv/Desktop/one/hub/SysEval-NegoLLMs"
+
+sft_checkpoint: "checkpoints/sft-tuned"
+grpo_checkpoint: "checkpoints/grpo-tuned"
+
+# "all_casino" runs all 17 CaSiNo tasks, or specify comma-separated task names
+tasks: "all_casino"
+num_instances: 200
+storage_dir: "runs/eval"
+
+model:
+  name: "Qwen/Qwen2.5-7B-Instruct"
+  hf_home: "/scratch/dbansa11/hf_models"
+  dtype: "bfloat16"
