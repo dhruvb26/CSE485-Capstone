@@ -98,14 +98,11 @@ def _action_base(action_str: str) -> str | None:
 def format_reward(completions, **kwargs) -> list[float]:
     """Per-turn format validity reward.
 
-    Scoring:
-      base +0.5 for valid single action with thought
-      +0.0 to +0.5 scaled by thought length (20-120 chars -> 0-0.5)
-      -1.0 action tag missing or unparseable
-      -1.0 multiple action keywords in one tag
-      -1.0 thought tag missing or empty
-      -1.0 ACCEPT_DEAL contaminated with extra content
-      -1.0 SUBMIT_DEAL values outside [0, 3]
+    +1.0  valid single action with non-empty thought
+    -1.0  action tag missing, unparseable, or contains multiple actions
+    -1.0  thought tag missing or empty
+    -1.0  ACCEPT_DEAL contaminated with extra content
+    -1.0  SUBMIT_DEAL values outside [0, 3]
     """
     rewards: list[float] = []
     for comp in completions:
@@ -123,13 +120,9 @@ def format_reward(completions, **kwargs) -> list[float]:
             rewards.append(-1.0)
             continue
 
-        r = 0.5
-
         if thought_str is None or len(thought_str) == 0:
-            r -= 1.5
-        else:
-            thought_len = len(thought_str)
-            r += 0.5 * max(0.0, min(1.0, (thought_len - 20) / 100))
+            rewards.append(-1.0)
+            continue
 
         if base == "[ACCEPT_DEAL]" and len(action_str.replace("[ACCEPT_DEAL]", "").strip()) > 0:
             rewards.append(-1.0)
@@ -138,35 +131,18 @@ def format_reward(completions, **kwargs) -> list[float]:
         if base == "[SUBMIT_DEAL]":
             deal = _parse_submit_deal(action_str)
             if deal is None:
-                r = -1.0
-            else:
-                for v in deal.values():
-                    if v < 0 or v > 3:
-                        r = -1.0
-                        break
+                rewards.append(-1.0)
+                continue
+            if any(v < 0 or v > 3 for v in deal.values()):
+                rewards.append(-1.0)
+                continue
 
-        rewards.append(max(min(r, 1.0), -1.0))
+        rewards.append(1.0)
     return rewards
 
 def _invert_alloc(alloc: dict[str, int]) -> dict[str, int]:
     """Given one side's allocation, return the other side's (3 - qty each)."""
     return {k: 3 - v for k, v in alloc.items()}
-
-
-def _talk_mentions_priority(talk_text: str, thought_text: str | None, fp: int, wp: int, fwp: int) -> float:
-    """Small reward for [TALK] turns that reference the learner's high-priority item.
-
-    Returns 0.0 to 0.15 based on whether the talk/thought mentions the
-    learner's most valued resource.
-    """
-    best_item = max(
-        [("food", fp), ("water", wp), ("firewood", fwp)],
-        key=lambda x: x[1],
-    )[0]
-    combined = (talk_text + " " + (thought_text or "")).lower()
-    if best_item in combined:
-        return 0.15
-    return 0.0
 
 
 def offer_reward(
@@ -182,8 +158,7 @@ def offer_reward(
 
     SUBMIT_DEAL  -> (own_pct - 0.5), ranging roughly -0.5 to +0.5
     ACCEPT_DEAL  -> (own_pct - 0.5) based on what the learner actually gets
-    REJECT_DEAL  -> small positive reward when rejecting a bad opponent offer
-    TALK         -> small reward for mentioning high-priority items
+    Others       -> 0.0
     """
     rewards: list[float] = []
 
@@ -196,7 +171,6 @@ def offer_reward(
     for i, comp in enumerate(completions):
         text = _get_text(comp)
         action_str = _parse_action(text)
-        thought_str = _parse_thought(text)
 
         fp = food_pts_list[i] if i < len(food_pts_list) else 5
         wp = water_pts_list[i] if i < len(water_pts_list) else 4
@@ -230,22 +204,6 @@ def offer_reward(
                 rewards.append(own_pct - 0.5)
             else:
                 rewards.append(0.0)
-            continue
-
-        if base == "[REJECT_DEAL]":
-            opp_alloc = _load_opponent_offer(opp_raw)
-            if opp_alloc is not None and mp > 0:
-                learner_alloc = _invert_alloc(opp_alloc)
-                own_pct = _compute_points(learner_alloc, fp, wp, fwp) / mp
-                rewards.append(0.2 * (0.5 - own_pct))
-            else:
-                rewards.append(0.0)
-            continue
-
-        if base == "[TALK]":
-            talk_text = _tag(text, "talk") or ""
-            r = _talk_mentions_priority(talk_text, thought_str, fp, wp, fwp)
-            rewards.append(r)
             continue
 
         rewards.append(0.0)
