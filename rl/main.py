@@ -8,7 +8,7 @@ import signal
 from dotenv import load_dotenv
 from tqdm import tqdm
 
-from rl.config import GenerateConfig, load_generate_config, load_training_config
+from rl.config import GenerateConfig, load_generate_config, load_grpo_config, load_training_config
 from rl.sft.data import load_all_conversations
 from rl.sft.generate import annotate_agent, create_openai_client
 from rl.sft.train import (
@@ -175,6 +175,97 @@ def main_train():
     run_training(trainer, resume_from=config.resume_from)
 
 
+def _find_latest_run_dir() -> str | None:
+    """Return the most recent ``runs/grpo_*`` directory, or *None*."""
+    runs_dir = "runs"
+    if not os.path.isdir(runs_dir):
+        return None
+    run_dirs = sorted(
+        (d for d in os.listdir(runs_dir) if d.startswith("grpo_")),
+        reverse=True,
+    )
+    return os.path.join(runs_dir, run_dirs[0]) if run_dirs else None
+
+
+def _load_dataset_from_jsonl(path: str):
+    """Reload an HF Dataset from a saved ``dataset.jsonl``."""
+    from datasets import Dataset
+
+    rows: list[dict] = []
+    with open(path, "r") as f:
+        for line in f:
+            rows.append(json.loads(line))
+    log.warning("Loaded %d rows from %s", len(rows), path)
+    return Dataset.from_list(rows)
+
+
+def _save_grpo_run(run_dir: str, episodes, dataset):
+    """Persist rollout episodes and the per-turn training dataset to *run_dir*."""
+    os.makedirs(run_dir, exist_ok=True)
+
+    ep_path = os.path.join(run_dir, "episodes.jsonl")
+    with open(ep_path, "w") as f:
+        for i, ep in enumerate(episodes):
+            record = {
+                "episode_idx": i,
+                "learner_agent_id": ep.learner_agent_id,
+                "opponent_agent_id": ep.opponent_agent_id,
+                "persona": ep.persona,
+                "outcome": ep.outcome,
+                "learner_points": ep.learner_points,
+                "opponent_points": ep.opponent_points,
+                "learner_messages": ep.learner_messages,
+                "opponent_messages": ep.opponent_messages,
+            }
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    ds_path = os.path.join(run_dir, "dataset.jsonl")
+    with open(ds_path, "w") as f:
+        for row in dataset:
+            f.write(json.dumps(dict(row), ensure_ascii=False) + "\n")
+
+    log.warning("Run artifacts saved to %s", run_dir)
+
+
+def main_grpo():
+    from datetime import datetime
+
+    config = load_grpo_config("rl/configs/grpo.yaml")
+
+    from rl.grpo.data import episodes_to_dataset, load_scenarios
+    from rl.grpo.rollout import run_self_play
+    from rl.grpo.train import (
+        build_grpo_trainer,
+        load_grpo_model_and_tokenizer,
+        run_grpo_training,
+    )
+
+    resuming = config.resume_from is not None
+
+    if resuming:
+        run_dir = _find_latest_run_dir()
+        if run_dir is None:
+            raise FileNotFoundError("No previous run found in runs/ to resume from")
+        ds_path = os.path.join(run_dir, "dataset.jsonl")
+        if not os.path.exists(ds_path):
+            raise FileNotFoundError(f"No dataset.jsonl found in {run_dir}")
+        log.warning("Resuming — loading saved dataset from %s", ds_path)
+        dataset = _load_dataset_from_jsonl(ds_path)
+    else:
+        run_dir = os.path.join("runs", f"grpo_{datetime.now():%Y%m%d_%H%M%S}")
+
+    model, tokenizer = load_grpo_model_and_tokenizer(config)
+
+    if not resuming:
+        scenarios = load_scenarios(config.data_path, config.max_episodes)
+        episodes = run_self_play(model, tokenizer, scenarios, config.rollout)
+        dataset = episodes_to_dataset(episodes)
+        _save_grpo_run(run_dir, episodes, dataset)
+
+    trainer = build_grpo_trainer(model, tokenizer, config, dataset)
+    run_grpo_training(trainer, resume_from=config.resume_from)
+
+
 def main():
     parser = argparse.ArgumentParser(description="RL")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -183,12 +274,17 @@ def main():
     subparsers.add_parser(
         "train", help="Run SFT training with LoRA on the generated data"
     )
+    subparsers.add_parser(
+        "grpo", help="Run GRPO training with self-play rollouts"
+    )
     args = parser.parse_args()
 
     if args.command == "generate":
         main_generate()
     elif args.command == "train":
         main_train()
+    elif args.command == "grpo":
+        main_grpo()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,45 @@
+data_path: "data/casino/ca.train.csv"
+sft_checkpoint: "checkpoints/sft-tuned"
+resume_from: null  # null = fresh run, "latest" = resume from last checkpoint
+max_episodes: 150
+
+model:
+  name: "Qwen/Qwen2.5-7B-Instruct"
+  hf_home: "/scratch/dbansa11/hf_models"
+  dtype: "bfloat16"
+
+rollout:
+  max_turns: 18
+  temperature: 0.7
+  top_p: 0.9
+  persona_weights:
+    uncompromising: 0.25
+    selfish: 0.25
+    anchoring: 0.25
+    cooperative: 0.25
+
+grpo:
+  output_dir: "checkpoints/grpo-tuned"
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 5.0e-7
+  warmup_ratio: 0.1
+  logging_steps: 5
+  save_steps: 50
+  max_completion_length: 1024
+  num_generations: 4
+  beta: 0.1
+  bf16: true
+  tf32: true
+  gradient_checkpointing: true
+
+reward_weights: [0.10, 0.35, 0.55]
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  bias: "none"
+  target_modules: "all-linear"
+  task_type: "CAUSAL_LM"

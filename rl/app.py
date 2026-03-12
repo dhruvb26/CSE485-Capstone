@@ -23,7 +23,7 @@ VIEWS = {
         "module": "rl.streamlit.views.training_viewer",
         "icon": ":material/show_chart:",
         "title": "Training",
-        "description": "Visualize SFT training loss and metrics over time.",
+        "description": "Visualize SFT and GRPO training metrics over time.",
     },
 }
 

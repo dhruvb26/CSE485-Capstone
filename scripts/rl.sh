@@ -3,8 +3,8 @@
 #SBATCH -p general
 #SBATCH -q private
 #SBATCH -A grp_ywang354
-#SBATCH -t 6:00:00
-#SBATCH --gres=gpu:a100:2
+#SBATCH -t 4:00:00
+#SBATCH --gres=gpu:a100:1
 #SBATCH --constraint=a100_80
 #SBATCH --mem=64G
 #SBATCH -c 8
@@ -15,10 +15,11 @@ set -euo pipefail
 
 TASK="${1:-}"
 
-if [[ -z "$TASK" ]] || [[ "$TASK" != "generate" && "$TASK" != "train" && "$TASK" != "all" ]]; then
-    echo "Usage: sbatch $0 {generate|train|all}"
+if [[ -z "$TASK" ]] || [[ "$TASK" != "generate" && "$TASK" != "train" && "$TASK" != "grpo" && "$TASK" != "all" ]]; then
+    echo "Usage: sbatch $0 {generate|train|grpo|all}"
     echo "  generate  — run GPT annotation to produce SFT data"
     echo "  train     — run SFT training with LoRA"
+    echo "  grpo      — run GRPO training with self-play rollouts"
     echo "  all       — run generate then train"
     exit 1
 fi
@@ -86,11 +87,17 @@ run_train() {
     $PYTHON -m rl.main train
 }
 
+run_grpo() {
+    $PYTHON -m rl.main grpo
+}
+
 if [[ "$TASK" == "all" ]]; then
     run_generate
     run_train
 elif [[ "$TASK" == "generate" ]]; then
     run_generate
+elif [[ "$TASK" == "grpo" ]]; then
+    run_grpo
 else
     run_train
 fi
