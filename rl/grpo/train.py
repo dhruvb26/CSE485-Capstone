@@ -1,5 +1,3 @@
-"""GRPOTrainer construction and training entry point."""
-
 from __future__ import annotations
 
 import json
@@ -132,6 +130,7 @@ def load_grpo_model_and_tokenizer(config):
         device_map="auto",
     )
     tokenizer = AutoTokenizer.from_pretrained(model_cfg.name)
+    tokenizer.padding_side = "left"
 
     sft_ckpt = config.sft_checkpoint
     if sft_ckpt and os.path.isdir(sft_ckpt):
@@ -153,6 +152,7 @@ def load_grpo_model_and_tokenizer(config):
                 device_map="auto",
             )
             tokenizer = AutoTokenizer.from_pretrained(sft_ckpt)
+            tokenizer.padding_side = "left"
 
     return base_model, tokenizer
 
