@@ -1,9 +1,3 @@
-"""Dataset preparation for GRPO negotiation training.
-
-Handles loading CaSiNo scenarios and converting self-play episodes into
-per-turn HF Datasets that GRPOTrainer can consume.
-"""
-
 from __future__ import annotations
 
 import json
@@ -20,7 +14,7 @@ log = logging.getLogger(__name__)
 _SUBMIT_RE = re.compile(
     r"\[SUBMIT_DEAL\]\s*food:(\d+)\s*water:(\d+)\s*firewood:(\d+)", re.IGNORECASE
 )
-MAX_POINTS = sum(3 * p for p in POINTS.values())  # 3*5 + 3*4 + 3*3 = 36
+MAX_POINTS = sum(3 * p for p in POINTS.values())
 
 
 def load_scenarios(
