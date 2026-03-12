@@ -237,3 +237,54 @@ def load_grpo_config(path: str) -> GRPOTrainingConfig:
     except Exception:
         log.error("Failed to parse GRPO config: %s", path)
         raise
+
+
+ALL_CASINO_TASKS = (
+    "sta_total_item_count_ca,sta_max_points_ca,sta_ask_point_values_ca,"
+    "sta_ask_low_priority_ca,sta_ask_high_priority_ca,"
+    "mid_strategy_ca,mid_gen_resp_ca,"
+    "mid_ask_low_priority_ca,mid_ask_high_priority_ca,"
+    "mid_partner_ask_low_priority_ca,mid_partner_ask_high_priority_ca,"
+    "end_deal_specifics_ca,end_deal_total_ca,"
+    "end_deal_likeness_ca,end_deal_satisfaction_ca,"
+    "end_partner_deal_likeness_ca,end_partner_deal_satisfaction_ca"
+)
+
+
+@dataclass
+class EvalConfig:
+    model: ModelConfig
+    sft_checkpoint: str | None
+    grpo_checkpoint: str | None
+    syseval_path: str
+    tasks: str
+    num_instances: int
+    storage_dir: str
+
+    @classmethod
+    def from_dict(cls, d: dict) -> EvalConfig:
+        tasks = d.get("tasks", "all_casino")
+        if tasks == "all_casino":
+            tasks = ALL_CASINO_TASKS
+        return cls(
+            model=ModelConfig.from_dict(d["model"]),
+            sft_checkpoint=d.get("sft_checkpoint"),
+            grpo_checkpoint=d.get("grpo_checkpoint"),
+            syseval_path=d["syseval_path"],
+            tasks=tasks,
+            num_instances=d.get("num_instances", 200),
+            storage_dir=d.get("storage_dir", "runs/eval"),
+        )
+
+
+def load_eval_config(path: str) -> EvalConfig:
+    """Load evaluation configuration from a YAML file."""
+    try:
+        with open(path, "r") as f:
+            return EvalConfig.from_dict(yaml.safe_load(f))
+    except FileNotFoundError:
+        log.error("Eval config not found: %s", path)
+        raise
+    except Exception:
+        log.error("Failed to parse eval config: %s", path)
+        raise
