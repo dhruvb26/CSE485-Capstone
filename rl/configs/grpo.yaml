@@ -1,6 +1,7 @@
 data_path: "data/casino/ca.train.csv"
 sft_checkpoint: "checkpoints/sft-tuned"
-resume_from: null  # null = fresh run, "latest" = resume from last checkpoint
+resume_from: null  
+dataset_path: "runs/grpo_20260311_222816/dataset.jsonl"   # path to a dataset.jsonl to skip self-play rollouts
 max_episodes: 150
 
 model:

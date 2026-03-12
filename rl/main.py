@@ -240,9 +240,13 @@ def main_grpo():
         run_grpo_training,
     )
 
-    resuming = config.resume_from is not None
+    model, tokenizer = load_grpo_model_and_tokenizer(config)
 
-    if resuming:
+    if config.dataset_path:
+        log.warning("Loading pre-built dataset from %s", config.dataset_path)
+        dataset = _load_dataset_from_jsonl(config.dataset_path)
+        run_dir = os.path.join("runs", f"grpo_{datetime.now():%Y%m%d_%H%M%S}")
+    elif config.resume_from:
         run_dir = _find_latest_run_dir()
         if run_dir is None:
             raise FileNotFoundError("No previous run found in runs/ to resume from")
@@ -253,10 +257,6 @@ def main_grpo():
         dataset = _load_dataset_from_jsonl(ds_path)
     else:
         run_dir = os.path.join("runs", f"grpo_{datetime.now():%Y%m%d_%H%M%S}")
-
-    model, tokenizer = load_grpo_model_and_tokenizer(config)
-
-    if not resuming:
         scenarios = load_scenarios(config.data_path, config.max_episodes)
         episodes = run_self_play(model, tokenizer, scenarios, config.rollout)
         dataset = episodes_to_dataset(episodes)

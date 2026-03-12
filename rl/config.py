@@ -208,6 +208,7 @@ class GRPOTrainingConfig:
     reward_weights: list[float]
     max_episodes: int | None
     resume_from: str | None
+    dataset_path: str | None
 
     @classmethod
     def from_dict(cls, d: dict) -> GRPOTrainingConfig:
@@ -221,6 +222,7 @@ class GRPOTrainingConfig:
             reward_weights=d.get("reward_weights", [0.2, 0.3, 0.5]),
             max_episodes=d.get("max_episodes"),
             resume_from=d.get("resume_from"),
+            dataset_path=d.get("dataset_path"),
         )
 
 
