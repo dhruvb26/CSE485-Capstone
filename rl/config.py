@@ -209,6 +209,8 @@ class GRPOTrainingConfig:
     max_episodes: int | None
     resume_from: str | None
     dataset_path: str | None
+    num_rounds: int
+    episodes_per_round: int | None
 
     @classmethod
     def from_dict(cls, d: dict) -> GRPOTrainingConfig:
@@ -223,6 +225,8 @@ class GRPOTrainingConfig:
             max_episodes=d.get("max_episodes"),
             resume_from=d.get("resume_from"),
             dataset_path=d.get("dataset_path"),
+            num_rounds=d.get("num_rounds", 1),
+            episodes_per_round=d.get("episodes_per_round"),
         )
 
 

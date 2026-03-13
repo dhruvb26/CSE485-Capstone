@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import signal
 
 from dotenv import load_dotenv
@@ -242,10 +243,16 @@ def main_grpo():
 
     model, tokenizer = load_grpo_model_and_tokenizer(config)
 
+    num_rounds = config.num_rounds
+    ep_per_round = config.episodes_per_round or config.max_episodes
+
     if config.dataset_path:
         log.warning("Loading pre-built dataset from %s", config.dataset_path)
         dataset = _load_dataset_from_jsonl(config.dataset_path)
         run_dir = os.path.join("runs", f"grpo_{datetime.now():%Y%m%d_%H%M%S}")
+        _save_grpo_run(run_dir, [], dataset)
+        trainer = build_grpo_trainer(model, tokenizer, config, dataset)
+        run_grpo_training(trainer, resume_from=config.resume_from)
     elif config.resume_from:
         run_dir = _find_latest_run_dir()
         if run_dir is None:
@@ -255,15 +262,33 @@ def main_grpo():
             raise FileNotFoundError(f"No dataset.jsonl found in {run_dir}")
         log.warning("Resuming — loading saved dataset from %s", ds_path)
         dataset = _load_dataset_from_jsonl(ds_path)
+        trainer = build_grpo_trainer(model, tokenizer, config, dataset)
+        run_grpo_training(trainer, resume_from=config.resume_from)
     else:
         run_dir = os.path.join("runs", f"grpo_{datetime.now():%Y%m%d_%H%M%S}")
-        scenarios = load_scenarios(config.data_path, config.max_episodes)
-        episodes = run_self_play(model, tokenizer, scenarios, config.rollout)
-        dataset = episodes_to_dataset(episodes)
-        _save_grpo_run(run_dir, episodes, dataset)
+        all_scenarios = load_scenarios(config.data_path, max_instances=None)
 
-    trainer = build_grpo_trainer(model, tokenizer, config, dataset)
-    run_grpo_training(trainer, resume_from=config.resume_from)
+        for round_idx in range(num_rounds):
+            log.warning(
+                "=== Online round %d/%d — generating %d episodes ===",
+                round_idx + 1, num_rounds, ep_per_round,
+            )
+            scenarios = random.sample(
+                all_scenarios, min(ep_per_round, len(all_scenarios))
+            )
+            episodes = run_self_play(model, tokenizer, scenarios, config.rollout)
+            dataset = episodes_to_dataset(episodes)
+            _save_grpo_run(
+                os.path.join(run_dir, f"round_{round_idx}"),
+                episodes, dataset,
+            )
+
+            trainer = build_grpo_trainer(model, tokenizer, config, dataset)
+            run_grpo_training(trainer, resume_from=None)
+
+            log.warning(
+                "=== Round %d/%d complete ===", round_idx + 1, num_rounds
+            )
 
 
 def main_eval():

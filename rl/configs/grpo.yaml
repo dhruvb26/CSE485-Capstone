@@ -1,8 +1,10 @@
 data_path: "data/casino/ca.train.csv"
 sft_checkpoint: "checkpoints/sft-tuned"
-resume_from: null  
-dataset_path: "runs/grpo_20260311_222816/dataset.jsonl"   # path to a dataset.jsonl to skip self-play rollouts
-max_episodes: 150
+resume_from: null
+dataset_path: null
+
+num_rounds: 3
+episodes_per_round: 50
 
 model:
   name: "Qwen/Qwen2.5-7B-Instruct"
@@ -20,7 +22,7 @@ rollout:
     cooperative: 0.25
 
 grpo:
-  output_dir: "checkpoints/grpo-tuned"
+  output_dir: "checkpoints/grpo-online"
   num_train_epochs: 3
   per_device_train_batch_size: 4
   gradient_accumulation_steps: 4
