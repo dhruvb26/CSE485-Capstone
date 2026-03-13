@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from argparse import Namespace
+from datetime import datetime
 from pathlib import Path
 
 from rl.config import EvalConfig
@@ -34,11 +35,13 @@ def _build_syseval_args(config: EvalConfig) -> Namespace:
 def run_evaluation(config: EvalConfig):
     """Run SysEval CaSiNo evaluation with the GRPO-trained model.
 
-    1. Adds SysEval repo to ``sys.path``
-    2. Loads the CaSiNo dataset handler (from SysEval)
-    3. Loads the GRPO model via our custom handler
-    4. Runs each requested task
-    5. Computes metrics on the saved log files
+    1. Creates a timestamped run directory under ``storage_dir``
+    2. Adds SysEval repo to ``sys.path``
+    3. Loads the CaSiNo dataset handler (from SysEval)
+    4. Loads the GRPO model via our custom handler
+    5. Runs each requested task
+    6. Saves raw completions to ``completions.jsonl``
+    7. Computes metrics on the saved log files
     """
     syseval_path = os.path.abspath(config.syseval_path)
     if not os.path.isdir(syseval_path):
@@ -49,11 +52,15 @@ def run_evaluation(config: EvalConfig):
     if syseval_path not in sys.path:
         sys.path.insert(0, syseval_path)
 
-    os.makedirs(os.path.join(config.storage_dir, "logs"), exist_ok=True)
-
-    # SysEval's CasinoHandler reads ca.test.csv relative to CWD,
-    # so we temporarily chdir into the SysEval repo.
     original_cwd = os.getcwd()
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(original_cwd, config.storage_dir, f"eval_{stamp}")
+    os.makedirs(os.path.join(run_dir, "logs"), exist_ok=True)
+    log.warning("Eval run directory: %s", run_dir)
+
+    completions_path = os.path.join(run_dir, "completions.jsonl")
+
     os.chdir(syseval_path)
 
     try:
@@ -61,8 +68,7 @@ def run_evaluation(config: EvalConfig):
         import utils as syseval_utils
 
         args = _build_syseval_args(config)
-        # Override storage_dir to absolute path so logs land in our project
-        args.storage_dir = os.path.join(original_cwd, config.storage_dir)
+        args.storage_dir = run_dir
 
         log.warning("Loading CaSiNo test dataset from SysEval")
         dataset_handler = CasinoHandler("casino", args)
@@ -70,19 +76,25 @@ def run_evaluation(config: EvalConfig):
         log.warning("Loading GRPO model for evaluation")
         from rl.eval.model_handler import GRPOModelHandler
 
-        model_handler = GRPOModelHandler("grpo_model", args, config)
+        model_handler = GRPOModelHandler(
+            "grpo_model", args, config,
+            completions_path=completions_path,
+        )
 
         task_names = [t.strip() for t in config.tasks.split(",") if t.strip()]
         log.warning("Running %d evaluation tasks: %s", len(task_names), task_names)
 
         for i, task_name in enumerate(task_names):
             log.warning("[%d/%d] Evaluating task: %s", i + 1, len(task_names), task_name)
+            model_handler.set_current_task(task_name)
             task_handler = syseval_utils.get_task_handler(task_name, args)
             task_handler.evaluate(dataset_handler, model_handler)
 
-        log.warning("All tasks complete. Logs saved to %s", args.storage_dir)
+        model_handler.save_completions()
 
-        _compute_metrics(args.storage_dir)
+        log.warning("All tasks complete. Logs saved to %s", run_dir)
+
+        _compute_metrics(run_dir)
 
     finally:
         os.chdir(original_cwd)

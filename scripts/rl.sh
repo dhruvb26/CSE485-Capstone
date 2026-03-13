@@ -15,11 +15,12 @@ set -euo pipefail
 
 TASK="${1:-}"
 
-if [[ -z "$TASK" ]] || [[ "$TASK" != "generate" && "$TASK" != "train" && "$TASK" != "grpo" && "$TASK" != "all" ]]; then
-    echo "Usage: sbatch $0 {generate|train|grpo|all}"
+if [[ -z "$TASK" ]] || [[ "$TASK" != "generate" && "$TASK" != "train" && "$TASK" != "grpo" && "$TASK" != "evaluate" && "$TASK" != "all" ]]; then
+    echo "Usage: sbatch $0 {generate|train|grpo|evaluate|all}"
     echo "  generate  — run GPT annotation to produce SFT data"
     echo "  train     — run SFT training with LoRA"
     echo "  grpo      — run GRPO training with self-play rollouts"
+    echo "  evaluate  — run SysEval CaSiNo evaluation on a trained model"
     echo "  all       — run generate then train"
     exit 1
 fi
@@ -91,6 +92,10 @@ run_grpo() {
     $PYTHON -m rl.main grpo
 }
 
+run_evaluate() {
+    $PYTHON -m rl.main evaluate
+}
+
 if [[ "$TASK" == "all" ]]; then
     run_generate
     run_train
@@ -98,6 +103,8 @@ elif [[ "$TASK" == "generate" ]]; then
     run_generate
 elif [[ "$TASK" == "grpo" ]]; then
     run_grpo
+elif [[ "$TASK" == "evaluate" ]]; then
+    run_evaluate
 else
     run_train
 fi

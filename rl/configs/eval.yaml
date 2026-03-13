@@ -1,10 +1,9 @@
-syseval_path: "/Users/dhruv/Desktop/one/hub/SysEval-NegoLLMs"
+syseval_path: "/home/dbansa11/projects/SysEval-NegoLLMs"
 
 sft_checkpoint: "checkpoints/sft-tuned"
 grpo_checkpoint: "checkpoints/grpo-tuned"
 
-# "all_casino" runs all 17 CaSiNo tasks, or specify comma-separated task names
-tasks: "all_casino"
+tasks: "end_deal_total_ca,end_deal_specifics_ca"
 num_instances: 200
 storage_dir: "runs/eval"
 
