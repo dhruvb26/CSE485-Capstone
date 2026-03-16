@@ -1,4 +1,4 @@
-# CSE485 Capstone
+# ASU - AI for Business: Creating Smart Business Negotiations Bots
 
 - [Resources](#resources)
 - [Setup](#setup)
@@ -218,5 +218,5 @@ git config --global user.email "you@example.com"
 - Project Issues: Create an issue in the repository
 - Technical Questions: Consult course materials or instructor
 
-**Course**: CSE 485 - Capstone Project 1</br>
+**Course**: CSE 485/486 - Capstone Project I/II</br>
 **Institution**: Arizona State University

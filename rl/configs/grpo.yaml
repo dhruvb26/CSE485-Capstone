@@ -1,48 +1,55 @@
-data_path: "data/casino/ca.train.csv"
-sft_checkpoint: "checkpoints/sft-tuned"
-resume_from: null
-dataset_path: null
+# mode: "self_play" or "annotated"
+#   - self_play: generates episodes via model self-play, then trains with GRPO
+#   - annotated: uses pre-annotated JSONL conversations as GRPO prompts
 
-num_rounds: 3
-episodes_per_round: 50
+mode: annotated
 
 model:
-  name: "Qwen/Qwen2.5-7B-Instruct"
-  hf_home: "/scratch/dbansa11/hf_models"
-  dtype: "bfloat16"
-
-rollout:
-  max_turns: 18
-  temperature: 0.7
-  top_p: 0.9
-  persona_weights:
-    uncompromising: 0.25
-    selfish: 0.25
-    anchoring: 0.25
-    cooperative: 0.25
-
-grpo:
-  output_dir: "checkpoints/grpo-online"
-  num_train_epochs: 3
-  per_device_train_batch_size: 4
-  gradient_accumulation_steps: 4
-  learning_rate: 1.0e-6
-  warmup_ratio: 0.1
-  logging_steps: 5
-  save_steps: 50
-  max_completion_length: 1024
-  num_generations: 8
-  beta: 0.04
-  bf16: true
-  tf32: true
-  gradient_checkpointing: true
-
-reward_weights: [0.10, 0.35, 0.55]
+  name: Qwen/Qwen2.5-7B-Instruct
+  dtype: bfloat16
+  hf_home: /scratch/dbansa11/hf_models
 
 lora:
-  r: 16
-  lora_alpha: 32
+  r: 8
+  lora_alpha: 16
   lora_dropout: 0.1
-  bias: "none"
-  target_modules: "all-linear"
-  task_type: "CAUSAL_LM"
+  bias: none
+  target_modules: all-linear
+  task_type: CAUSAL_LM
+
+grpo:
+  sft_checkpoint: checkpoints/sft-tuned
+  output_dir: checkpoints/grpo
+  prompt_split: 0.6
+  num_generations: 4
+  beta: 0.04
+  num_train_epochs: 2
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 2
+  learning_rate: 5.0e-7
+  warmup_ratio: 0.1
+  logging_steps: 10
+  save_strategy: "epoch"
+  gradient_checkpointing: true
+  bf16: true
+  report_to: trackio
+  
+  # for annotated mode
+  data_path: data/casino/train.jsonl
+
+  extra_kwargs:
+    log_completions: true
+
+  # for self-play mode
+  # csv_path: data/casino/train.csv
+  # num_episodes: 50
+  # max_turns: 18
+  # temperature: 0.7
+  # top_p: 0.9
+  # persona_weights:
+  #   uncompromising: 0.25
+  #   selfish: 0.25
+  #   anchoring: 0.25
+  #   cooperative: 0.25
+
+# resume_from: null

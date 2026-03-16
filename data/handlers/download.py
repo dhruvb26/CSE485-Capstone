@@ -1,6 +1,5 @@
 import argparse
 import gzip
-import logging
 import os
 import shutil
 import zipfile
@@ -11,8 +10,6 @@ import urllib3
 from convokit import Corpus, download
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-logger = logging.getLogger(__name__)
 
 DATASETS = {
     "casino": {
@@ -104,7 +101,7 @@ def _download_github_files(base_url: str, files: list, output_dir: str):
         file_url = urljoin(base_url, filename)
         output_path = os.path.join(output_dir, filename)
 
-        logger.info(f"Downloading {filename}...")
+        print(f"Downloading {filename}...")
         try:
             response = requests.get(file_url, timeout=30)
             response.raise_for_status()
@@ -112,10 +109,10 @@ def _download_github_files(base_url: str, files: list, output_dir: str):
             with open(output_path, "wb") as f:
                 f.write(response.content)
 
-            logger.info(f"Downloaded {filename}")
+            print(f"Downloaded {filename}")
 
         except requests.RequestException as e:
-            logger.error(f"Failed to download {filename}: {e}")
+            print(f"Error: Failed to download {filename}: {e}")
             raise
 
 
@@ -134,7 +131,7 @@ def _download_files_from_urls(files_urls: dict, output_dir: str):
     for filename, url in files_urls.items():
         output_path = os.path.join(output_dir, filename)
 
-        logger.info(f"Downloading {filename} from {url}...")
+        print(f"Downloading {filename} from {url}...")
         try:
             response = requests.get(url, timeout=60, verify=False)
             response.raise_for_status()
@@ -142,10 +139,10 @@ def _download_files_from_urls(files_urls: dict, output_dir: str):
             with open(output_path, "wb") as f:
                 f.write(response.content)
 
-            logger.info(f"Downloaded {filename}")
+            print(f"Downloaded {filename}")
 
         except requests.RequestException as e:
-            logger.error(f"Failed to download {filename}: {e}")
+            print(f"Error: Failed to download {filename}: {e}")
             raise
 
 
@@ -174,52 +171,52 @@ def download_dataset(dataset_name: str, overwrite: bool = False):
     data_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     output_dir = os.path.join(data_root, dataset_name)
 
-    logger.info(f"Output directory: {output_dir}")
+    print(f"Output directory: {output_dir}")
 
     if os.path.exists(output_dir) and os.listdir(output_dir):
         if not overwrite:
-            logger.info(
+            print(
                 f"Dataset '{dataset_name}' already exists at {output_dir}\n"
                 f"  Use --overwrite to download and replace existing data."
             )
             return
         else:
-            logger.info(f"Removing existing data at {output_dir}...")
+            print(f"Removing existing data at {output_dir}...")
             shutil.rmtree(output_dir)
 
     if dataset_name == "casino":
-        logger.info(f"Downloading {dataset_name} corpus...")
+        print(f"Downloading {dataset_name} corpus...")
 
         cache_dir = os.path.join(data_root, ".cache")
         path = download(dataset_info["name"], data_dir=cache_dir)
 
-        logger.info(f"Loading corpus from {path}...")
+        print(f"Loading corpus from {path}...")
         corpus = Corpus(filename=path)
 
-        logger.info(f"Saving to {output_dir}...")
+        print(f"Saving to {output_dir}...")
         corpus.dump(output_dir)
 
-        logger.info(f"Dataset '{dataset_name}' downloaded and saved to {output_dir}")
+        print(f"Created {output_dir}")
     elif dataset_name == "amazon_history_price":
-        logger.info(f"Downloading {dataset_name} dataset...")
+        print(f"Downloading {dataset_name} dataset...")
 
         _download_github_files(dataset_info["base_url"], dataset_info["files"], output_dir)
 
-        logger.info(f"Dataset '{dataset_name}' downloaded and saved to {output_dir}")
+        print(f"Created {output_dir}")
     elif dataset_name == "craigslist_bargains":
-        logger.info(f"Downloading {dataset_name} dataset...")
+        print(f"Downloading {dataset_name} dataset...")
 
         _download_files_from_urls(dataset_info["files_urls"], output_dir)
 
-        logger.info(f"Dataset '{dataset_name}' downloaded and saved to {output_dir}")
+        print(f"Created {output_dir}")
     elif dataset_name == "ebay_best_offer":
-        logger.info(f"Downloading {dataset_name} dataset...")
+        print(f"Downloading {dataset_name} dataset...")
 
         _download_files_from_urls(dataset_info["files_urls"], output_dir)
 
         for file_name in dataset_info["files_urls"]:
             if file_name.endswith(".gz"):
-                logger.info(f"Unzipping {file_name}...")
+                print(f"Unzipping {file_name}...")
                 file_path = os.path.join(output_dir, file_name)
                 ungz_path = os.path.join(output_dir, file_name[:-3])
                 try:
@@ -227,23 +224,23 @@ def download_dataset(dataset_name: str, overwrite: bool = False):
                         with open(ungz_path, "wb") as file_out:
                             shutil.copyfileobj(file_in, file_out)
                 except Exception as e:
-                    logger.error(f"Failed to unzip {file_name}: {e}")
+                    print(f"Error: Failed to unzip {file_name}: {e}")
 
     elif dataset_name == "dnd":
-        logger.info(f"Downloading {dataset_name} dataset...")
+        print(f"Downloading {dataset_name} dataset...")
 
         _download_github_files(dataset_info["base_url"], dataset_info["files"], output_dir)
 
-        logger.info(f"Dataset '{dataset_name}' downloaded and saved to {output_dir}")
+        print(f"Created {output_dir}")
 
     elif dataset_name == "ji":
-        logger.info(f"Downloading {dataset_name} dataset...")
+        print(f"Downloading {dataset_name} dataset...")
 
         zip_url = dataset_info["zip_url"]
         os.makedirs(output_dir, exist_ok=True)
 
         zip_path = os.path.join(output_dir, "data.zip")
-        logger.info(f"Downloading data.zip from {zip_url}...")
+        print(f"Downloading data.zip from {zip_url}...")
         try:
             response = requests.get(zip_url, timeout=60)
             response.raise_for_status()
@@ -251,33 +248,31 @@ def download_dataset(dataset_name: str, overwrite: bool = False):
             with open(zip_path, "wb") as f:
                 f.write(response.content)
 
-            logger.info("Downloaded data.zip")
+            print("Downloaded data.zip")
 
         except requests.RequestException as e:
-            logger.error(f"Failed to download data.zip: {e}")
+            print(f"Error: Failed to download data.zip: {e}")
             raise
 
-        logger.info("Extracting data.zip...")
+        print("Extracting data.zip...")
         try:
             with zipfile.ZipFile(zip_path, "r") as zip_ref:
                 zip_ref.extractall(output_dir)
 
             os.remove(zip_path)
-            logger.info("Extracted and cleaned up data.zip")
+            print("Extracted and cleaned up data.zip")
 
         except zipfile.BadZipFile as e:
-            logger.error(f"Failed to extract data.zip: {e}")
+            print(f"Error: Failed to extract data.zip: {e}")
             raise
 
-        logger.info(f"Dataset '{dataset_name}' downloaded and saved to {output_dir}")
+        print(f"Created {output_dir}")
 
     else:
         raise ValueError(f"Dataset '{dataset_name}' not supported.")
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
     parser = argparse.ArgumentParser(description="Download datasets")
     parser.add_argument(
         "--dataset",

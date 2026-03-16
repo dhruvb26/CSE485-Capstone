@@ -1,294 +1,93 @@
 from __future__ import annotations
 
-import logging
-from dataclasses import dataclass
-
-import yaml
-
-log = logging.getLogger(__name__)
-
-
-@dataclass
-class DatasetConfig:
-    path: str
-
-    @classmethod
-    def from_dict(cls, d: dict) -> DatasetConfig:
-        return cls(path=d["path"])
-
-
-@dataclass
-class GenerateConfig:
-    model: str
-    temperature: float
-    base_url: str | None
-    api_key_env: str | None
-    max_retries: int
-    retry_min_wait: int
-    retry_max_wait: int
-    max_concurrent: int
-    max_instances: int | None
-    datasets: dict[str, DatasetConfig]
-    output_jsonl: str
-
-    @classmethod
-    def from_dict(cls, d: dict) -> GenerateConfig:
-        mode = d.get("mode", "api")
-        mode_cfg = d.get(mode)
-        if mode_cfg is None:
-            raise ValueError(
-                f"Mode '{mode}' not found in generate config. "
-                f"Available modes: {[k for k in d if isinstance(d[k], dict) and k != 'datasets']}"
-            )
-
-        datasets = {
-            name: DatasetConfig.from_dict(ds) for name, ds in d["datasets"].items()
-        }
-        return cls(
-            model=mode_cfg["model"],
-            temperature=d["temperature"],
-            base_url=mode_cfg.get("base_url"),
-            api_key_env=mode_cfg.get("api_key_env"),
-            max_retries=mode_cfg["max_retries"],
-            retry_min_wait=mode_cfg["retry_min_wait"],
-            retry_max_wait=mode_cfg["retry_max_wait"],
-            max_concurrent=mode_cfg["max_concurrent"],
-            max_instances=d.get("max_instances"),
-            datasets=datasets,
-            output_jsonl=d["output_jsonl"],
-        )
+from dataclasses import dataclass, field
 
 
 @dataclass
 class ModelConfig:
     name: str
-    hf_home: str
-    dtype: str
-
-    @classmethod
-    def from_dict(cls, d: dict) -> ModelConfig:
-        return cls(
-            name=d["name"],
-            hf_home=d["hf_home"],
-            dtype=d["dtype"],
-        )
+    dtype: str = "bfloat16"
+    hf_home: str = "/scratch/dbansa11/hf_models"
 
 
 @dataclass
-class SFTRawConfig:
-    """Thin wrapper around the raw ``sft:`` YAML section.
-
-    All keys are forwarded directly to ``trl.SFTConfig`` (which extends
-    ``transformers.TrainingArguments``), so any field supported by TRL or
-    HF TrainingArguments can be specified in the YAML without changing
-    this class.
-    """
-
-    raw: dict
-
-    @classmethod
-    def from_dict(cls, d: dict) -> SFTRawConfig:
-        return cls(raw=dict(d))
+class LoRAConfig:
+    r: int = 16
+    lora_alpha: int = 32
+    lora_dropout: float = 0.1
+    bias: str = "none"
+    target_modules: str = "all-linear"
+    task_type: str = "CAUSAL_LM"
 
 
 @dataclass
-class LoraConfig:
-    r: int
-    lora_alpha: int
-    lora_dropout: float
-    bias: str
-    target_modules: str
-    task_type: str
-
-    @classmethod
-    def from_dict(cls, d: dict) -> LoraConfig:
-        return cls(
-            r=d["r"],
-            lora_alpha=d["lora_alpha"],
-            lora_dropout=d["lora_dropout"],
-            bias=d["bias"],
-            target_modules=d["target_modules"],
-            task_type=d["task_type"],
-        )
-
-
-@dataclass
-class TrainingConfig:
-    model: ModelConfig
-    sft: SFTRawConfig
-    lora: LoraConfig
+class SFTTrainerConfig:
     data_path: str
-    val_split: float
-    resume_from: str | None
-
-    @classmethod
-    def from_dict(cls, d: dict) -> TrainingConfig:
-        return cls(
-            model=ModelConfig.from_dict(d["model"]),
-            sft=SFTRawConfig.from_dict(d["sft"]),
-            lora=LoraConfig.from_dict(d["lora"]),
-            data_path=d["data_path"],
-            val_split=d.get("val_split", 0.0),
-            resume_from=d.get("resume_from"),
-        )
-
-
-def load_generate_config(path: str) -> GenerateConfig:
-    """Load generate configuration from a YAML file and return a typed config."""
-    try:
-        with open(path, "r") as f:
-            return GenerateConfig.from_dict(yaml.safe_load(f))
-    except FileNotFoundError:
-        log.error("Generate config not found: %s", path)
-        raise
-    except Exception:
-        log.error("Failed to parse generate config: %s", path)
-        raise
-
-
-def load_training_config(path: str) -> TrainingConfig:
-    """Load training configuration from a YAML file and return a typed config."""
-    try:
-        with open(path, "r") as f:
-            return TrainingConfig.from_dict(yaml.safe_load(f))
-    except FileNotFoundError:
-        log.error("Training config not found: %s", path)
-        raise
-    except Exception:
-        log.error("Failed to parse training config: %s", path)
-        raise
-
-@dataclass
-class RolloutConfig:
-    max_turns: int
-    temperature: float
-    top_p: float
-    persona_weights: dict[str, float]
-
-    @classmethod
-    def from_dict(cls, d: dict) -> RolloutConfig:
-        return cls(
-            max_turns=d.get("max_turns", 10),
-            temperature=d.get("temperature", 0.7),
-            top_p=d.get("top_p", 0.9),
-            persona_weights=d.get(
-                "persona_weights",
-                {
-                    "uncompromising": 0.25,
-                    "selfish": 0.25,
-                    "anchoring": 0.25,
-                    "cooperative": 0.25,
-                },
-            ),
-        )
+    lora: LoRAConfig = field(default_factory=LoRAConfig)
+    output_dir: str = "checkpoints/sft"
+    num_train_epochs: int = 3
+    per_device_train_batch_size: int = 4
+    gradient_accumulation_steps: int = 2
+    learning_rate: float = 8e-6
+    warmup_ratio: float = 0.1
+    logging_steps: int = 5
+    save_strategy: str = "epoch"
+    assistant_only_loss: bool = True
+    gradient_checkpointing: bool = True
+    bf16: bool = True
+    report_to: str = "trackio"
+    extra_kwargs: dict = field(default_factory=dict)
 
 
 @dataclass
-class GRPORawConfig:
-    """Thin wrapper around the raw ``grpo:`` YAML section.
-
-    All keys are forwarded directly to ``trl.GRPOConfig``.
-    """
-
-    raw: dict
-
-    @classmethod
-    def from_dict(cls, d: dict) -> GRPORawConfig:
-        return cls(raw=dict(d))
-
-
-@dataclass
-class GRPOTrainingConfig:
-    model: ModelConfig
-    rollout: RolloutConfig
-    grpo: GRPORawConfig
-    lora: LoraConfig
-    data_path: str
+class GRPOTrainerConfig:
     sft_checkpoint: str
-    reward_weights: list[float]
-    max_episodes: int | None
-    resume_from: str | None
-    dataset_path: str | None
-    num_rounds: int
-    episodes_per_round: int | None
-
-    @classmethod
-    def from_dict(cls, d: dict) -> GRPOTrainingConfig:
-        return cls(
-            model=ModelConfig.from_dict(d["model"]),
-            rollout=RolloutConfig.from_dict(d.get("rollout", {})),
-            grpo=GRPORawConfig.from_dict(d["grpo"]),
-            lora=LoraConfig.from_dict(d["lora"]),
-            data_path=d["data_path"],
-            sft_checkpoint=d.get("sft_checkpoint", ""),
-            reward_weights=d.get("reward_weights", [0.2, 0.3, 0.5]),
-            max_episodes=d.get("max_episodes"),
-            resume_from=d.get("resume_from"),
-            dataset_path=d.get("dataset_path"),
-            num_rounds=d.get("num_rounds", 1),
-            episodes_per_round=d.get("episodes_per_round"),
-        )
-
-
-def load_grpo_config(path: str) -> GRPOTrainingConfig:
-    """Load GRPO training configuration from a YAML file."""
-    try:
-        with open(path, "r") as f:
-            return GRPOTrainingConfig.from_dict(yaml.safe_load(f))
-    except FileNotFoundError:
-        log.error("GRPO config not found: %s", path)
-        raise
-    except Exception:
-        log.error("Failed to parse GRPO config: %s", path)
-        raise
-
-
-ALL_CASINO_TASKS = (
-    "sta_total_item_count_ca,sta_max_points_ca,sta_ask_point_values_ca,"
-    "sta_ask_low_priority_ca,sta_ask_high_priority_ca,"
-    "mid_strategy_ca,mid_gen_resp_ca,"
-    "mid_ask_low_priority_ca,mid_ask_high_priority_ca,"
-    "mid_partner_ask_low_priority_ca,mid_partner_ask_high_priority_ca,"
-    "end_deal_specifics_ca,end_deal_total_ca,"
-    "end_deal_likeness_ca,end_deal_satisfaction_ca,"
-    "end_partner_deal_likeness_ca,end_partner_deal_satisfaction_ca"
-)
+    data_path: str
+    lora: LoRAConfig = field(default_factory=LoRAConfig)
+    output_dir: str = "checkpoints/grpo"
+    prompt_split: float = 0.5
+    num_generations: int = 8
+    beta: float = 0.04
+    num_train_epochs: int = 1
+    per_device_train_batch_size: int = 4
+    gradient_accumulation_steps: int = 2
+    learning_rate: float = 5e-7
+    warmup_ratio: float = 0.1
+    logging_steps: int = 5
+    save_strategy: str = "epoch"
+    gradient_checkpointing: bool = True
+    bf16: bool = True
+    report_to: str = "trackio"
+    extra_kwargs: dict = field(default_factory=dict)
 
 
 @dataclass
-class EvalConfig:
-    model: ModelConfig
-    sft_checkpoint: str | None
-    grpo_checkpoint: str | None
-    syseval_path: str
-    tasks: str
-    num_instances: int
-    storage_dir: str
-
-    @classmethod
-    def from_dict(cls, d: dict) -> EvalConfig:
-        tasks = d.get("tasks", "all_casino")
-        if tasks == "all_casino":
-            tasks = ALL_CASINO_TASKS
-        return cls(
-            model=ModelConfig.from_dict(d["model"]),
-            sft_checkpoint=d.get("sft_checkpoint"),
-            grpo_checkpoint=d.get("grpo_checkpoint"),
-            syseval_path=d["syseval_path"],
-            tasks=tasks,
-            num_instances=d.get("num_instances", 200),
-            storage_dir=d.get("storage_dir", "runs/eval"),
-        )
-
-
-def load_eval_config(path: str) -> EvalConfig:
-    """Load evaluation configuration from a YAML file."""
-    try:
-        with open(path, "r") as f:
-            return EvalConfig.from_dict(yaml.safe_load(f))
-    except FileNotFoundError:
-        log.error("Eval config not found: %s", path)
-        raise
-    except Exception:
-        log.error("Failed to parse eval config: %s", path)
-        raise
+class SelfPlayConfig:
+    sft_checkpoint: str
+    csv_path: str
+    lora: LoRAConfig = field(default_factory=LoRAConfig)
+    output_dir: str = "checkpoints/grpo-selfplay"
+    prompt_split: float = 0.5
+    num_episodes: int = 50
+    max_turns: int = 18
+    temperature: float = 0.7
+    top_p: float = 0.9
+    persona_weights: dict[str, float] = field(default_factory=lambda: {
+        "uncompromising": 0.25,
+        "selfish": 0.25,
+        "anchoring": 0.25,
+        "cooperative": 0.25,
+    })
+    num_generations: int = 8
+    beta: float = 0.04
+    num_train_epochs: int = 1
+    per_device_train_batch_size: int = 4
+    gradient_accumulation_steps: int = 2
+    learning_rate: float = 5e-7
+    warmup_ratio: float = 0.1
+    logging_steps: int = 5
+    save_strategy: str = "epoch"
+    gradient_checkpointing: bool = True
+    bf16: bool = True
+    report_to: str = "trackio"
+    extra_kwargs: dict = field(default_factory=dict)
