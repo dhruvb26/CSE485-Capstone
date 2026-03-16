@@ -1,17 +1,20 @@
 models:
-  - type: open_ai
-    model_str: gpt-4o-mini-2024-07-18
+  - type: local_model
+    model_path: Qwen/Qwen2.5-7B-Instruct
+    label: qwen2.5-7b-instruct
+    max_new_tokens: 256
+    token_limit: 4096
 
+#  - type: open_ai
+#    model_str: gpt-4o-mini-2024-07-18
 #  - type: open_ai
 #    model_str: gpt-4o-2024-08-06
 #  - type: hf_model
 #    model_str: mistralai/Mistral-7B-Instruct-v0.1
 #  - type: local_model
-#    model_path: checkpoints/grpo-tuned       # checkpoint dir or HF hub name
+#    model_path: checkpoints/grpo-tuned       # LoRA adapter example
 #    base_model: Qwen/Qwen2.5-3B-Instruct    # required if model_path is a LoRA adapter
-#    label: my-grpo-model                     # optional display name for log files
-#    max_new_tokens: 256                      # generation length (default: 256)
-#    token_limit: 4096                        # max input tokens (default: 4096)
+#    label: my-grpo-model
 
 # DealOrNoDeal (dnd):
 #   sta_total_item_count_dnd, sta_max_points_dnd, sta_ask_point_values_dnd,
@@ -39,11 +42,7 @@ models:
 #
 # Use "all" to run every task, or "all_dnd", "all_casino", etc. for a dataset.
 tasks:
-  - sta_total_item_count_dnd
-  - sta_max_points_dnd
-  - end_deal_specifics_dnd
-  - sta_total_item_count_ca
-  - end_deal_specifics_ca
+  - all_casino
 
 num_instances: 200       
 max_num_instances: 200   

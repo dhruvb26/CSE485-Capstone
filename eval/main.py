@@ -122,9 +122,7 @@ def run_evaluation(config):
     for model_cfg in model_cfgs:
         model_type = model_cfg["type"]
         model_display = _resolve_model_display_name(model_type, model_cfg)
-        print(f"\n{'='*70}")
         print(f"Model: {model_type} ({model_display})")
-        print(f"{'='*70}")
 
         args = build_args(config, model_cfg)
 

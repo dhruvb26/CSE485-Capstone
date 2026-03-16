@@ -133,7 +133,7 @@ def load_model_tokenizer(
     model = AutoModelForCausalLM.from_pretrained(
         config.model_name,
         device_map="auto",
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
     )
 
     return model, tokenizer

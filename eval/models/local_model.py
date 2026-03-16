@@ -51,7 +51,7 @@ class LocalModelHandler(BaseModelHandler):
 
             print(f"  Loading base model: {base_model}")
             self.model = AutoModelForCausalLM.from_pretrained(
-                base_model, device_map="auto", torch_dtype="auto",
+                base_model, device_map="auto", dtype="auto",
             )
             self.tokenizer = AutoTokenizer.from_pretrained(base_model)
 
@@ -61,7 +61,7 @@ class LocalModelHandler(BaseModelHandler):
         else:
             print(f"  Loading model from: {model_path}")
             self.model = AutoModelForCausalLM.from_pretrained(
-                model_path, device_map="auto", torch_dtype="auto",
+                model_path, device_map="auto", dtype="auto",
             )
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
 

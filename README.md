@@ -3,10 +3,13 @@
 - [Overview](#overview)
 - [Setup](#setup)
 - [Training](#training)
+- [Evaluation](#evaluation)
 - [Datasets](#datasets)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
+
+Check out [Google Drive](https://drive.google.com/drive/folders/10iKqBuJy0eDGJXZf4kveI-YooZ7WTY5n?usp=sharing) for all documents, reports and product reports.
 
 **`benchmark/`** contains the initial implementations from our project to test out buyer/seller negotiation capabilities of the models. It runs multi-turn buyer-vs-seller dialogs between two LLMs and scores each negotiation on deal rate, profit, and action validity. A "testing model" is benchmarked in both roles (buyer and seller) against GPT-4o across hundreds of products.
 
@@ -17,6 +20,8 @@
 > **Helpful Resources:** [OS HuggingFace Cookbook](https://huggingface.co/learn/cookbook/index) and [HuggingFace LLM Course](https://huggingface.co/learn/llm-course/en/chapter0/1).
 
 **`finetune/`** handles supervised fine-tuning with LoRA adapters. Models are first fine-tuned on negotiation dialog datasets before moving to RL training.
+
+**`eval/`** is the evaluation framework, adapted from [SysEval-NegoLLMs](https://github.com/DSincerity/SysEval-NegoLLMs). It systematically assesses LLM negotiation capabilities across 4 datasets (Deal or No Deal, CaSiNo, Job Interview, CRA) and 3 dialogue stages (start, mid, end). Supports OpenAI models, HuggingFace models, and custom-trained local checkpoints (including LoRA adapters). Configured via a single YAML file. See [`eval/README.md`](eval/README.md) for full documentation.
 
 **`data/`** includes download scripts and preprocessing handlers for the negotiation datasets used across training and evaluation.
 
@@ -65,6 +70,48 @@ cat logs/slurm_<job_id>.out     # view output
 cat logs/slurm_<job_id>.err     # view errors
 ```
 
+## Evaluation
+
+Run systematic evaluations of any model on negotiation tasks. Configure `eval/config.yaml` with your models and tasks, then:
+
+```bash
+python -m eval                              # run with default config
+python -m eval --config path/to/config.yaml # custom config
+python -m eval --evaluate-only              # score existing logs only
+python -m eval --list-tasks                 # list all available tasks
+```
+
+Example config for evaluating a local Qwen model on all CaSiNo tasks:
+
+```yaml
+models:
+  - type: local_model
+    model_path: Qwen/Qwen2.5-3B-Instruct
+    label: qwen2.5-3b-instruct
+
+tasks:
+  - all_casino
+```
+
+To compare your fine-tuned checkpoint against the base model:
+
+```yaml
+models:
+  - type: local_model
+    model_path: Qwen/Qwen2.5-3B-Instruct
+    label: qwen2.5-3b-base
+
+  - type: local_model
+    model_path: checkpoints/grpo-tuned
+    base_model: Qwen/Qwen2.5-3B-Instruct
+    label: qwen2.5-3b-grpo
+
+tasks:
+  - all
+```
+
+Results are saved as JSON under `logs/eval/` (gitignored). See [`README.md`](eval/README.md) for all available tasks, metrics, and config options.
+
 ## Datasets
 
 Datasets can be downloaded with the CLI tool:
@@ -73,7 +120,7 @@ Datasets can be downloaded with the CLI tool:
 python data/download.py --dataset <name>
 ```
 
-Available datasets: `amazon_history_price`, `casino`, `craigslist_bargains`, `dnd`, `ji`, `ebay_best_offer`. See [`DATASETS.md`](data/DATASETS.md) for full details on each.
+Available datasets: `amazon_history_price`, `casino`, `cra`, `craigslist_bargains`, `dnd`, `ji`, `ebay_best_offer`. See [`DATASETS.md`](data/DATASETS.md) for full details on each.
 
 ## Troubleshooting
 
