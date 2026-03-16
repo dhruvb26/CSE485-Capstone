@@ -30,3 +30,10 @@ dependencies:
   - pip:
       - "vllm>=0.5.0"
       - convokit
+      - trackio
+      - pyyaml
+      - openai
+      - tenacity
+      - loguru
+      - peft
+      - trl

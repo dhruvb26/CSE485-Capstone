@@ -12,6 +12,7 @@ venv/
 
 # Logs
 runs/
+logs/
 .env
 
 # DS-Store
@@ -20,11 +21,10 @@ __MACOSX/
 
 # Cache
 .cache/
+unsloth_compiled_cache/
 
-# Model training artifacts
-finetune/training_output/
-finetune/pretrained_models/
-finetune/tokenizers/
+# Other
+checkpoints/
 
-# Data
-formatted_data/
+# Slurm .out files
+*.out

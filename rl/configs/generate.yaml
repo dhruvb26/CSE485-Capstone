@@ -1,0 +1,11 @@
+data_path: data/casino/train.csv
+dataset: casino
+
+model: gpt-5-mini-2025-08-07
+temperature: 1.0
+# base_url: http://localhost:8000/v1    # uncomment for local vLLM
+# api_key_env: OPENAI_API_KEY
+
+concurrency: 4
+batch_size: 8       # rows processed per gather batch
+# max_rows: null    # set to an int to cap the number of rows
