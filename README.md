@@ -89,6 +89,16 @@ Available datasets: `amazon_history_price`, `casino`, `craigslist_bargains`, `dn
 - Verify CUDA module is loaded: `module list`
 - Confirm virtual environment activation: `which python`
 
+**Running out of disk space (model downloads):**
+
+By default, HuggingFace downloads models to `~/.cache/huggingface/`, which sits on the limited home directory. Redirect it to scratch storage:
+
+```bash
+export HF_HOME=/scratch/$USER/hf_models
+```
+
+Add this to your `~/.bashrc` or job script so it persists across sessions.
+
 **Author identity unknown:**
 
 `git config --global` wants to write to `~/.gitconfig` (which lives in $HOME). On certain SOL login or compute nodes, $HOME may be unset inside your job environment (it's a known bug with interactive sessions). So Git can't find the right location to store the global config.
