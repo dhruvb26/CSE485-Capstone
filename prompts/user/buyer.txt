@@ -1,6 +1,0 @@
-{inv}
-
-Shopping List
-{need}
-
-Now, I play the role of seller and you play the role of buyer. We are going to negotiate based on the Inventory List in {max_turns} turns.
