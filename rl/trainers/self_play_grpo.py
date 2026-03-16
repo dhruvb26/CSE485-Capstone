@@ -16,7 +16,7 @@ from trl import GRPOConfig, GRPOTrainer
 from rl.trainers.base import BaseTrainer
 from rl.config import ModelConfig, SelfPlayConfig
 from rl.prompts import build_system_prompt
-from rl.rewards import arithmetic_reward, format_reward, length_reward, thought_judge_reward
+from rl.rewards import arithmetic_reward, format_reward, length_reward, outcome_reward, thought_judge_reward
 from rl.utils import extract_tag, parse_submit_deal, strip_thought
 
 
@@ -380,7 +380,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         return GRPOTrainer(
             model=self.model,
             args=training_args,
-            reward_funcs=[length_reward, thought_judge_reward, format_reward, arithmetic_reward],
+            reward_funcs=[length_reward, thought_judge_reward, format_reward, arithmetic_reward, outcome_reward],
             train_dataset=train_dataset,
             processing_class=self.tokenizer,
             peft_config=peft_config,

@@ -2,7 +2,7 @@
 #   - self_play: generates episodes via model self-play, then trains with GRPO
 #   - annotated: uses pre-annotated JSONL conversations as GRPO prompts
 
-mode: annotated
+mode: self_play
 
 model:
   name: Qwen/Qwen2.5-7B-Instruct
@@ -19,7 +19,7 @@ lora:
 
 grpo:
   sft_checkpoint: checkpoints/sft-tuned
-  output_dir: checkpoints/grpo
+  output_dir: checkpoints/grpo-selfplay
   prompt_split: 0.6
   num_generations: 4
   beta: 0.04
@@ -33,23 +33,22 @@ grpo:
   gradient_checkpointing: true
   bf16: true
   report_to: trackio
-  
-  # for annotated mode
-  data_path: data/casino/train.jsonl
+
+  csv_path: data/casino/train.csv
+  num_episodes: 50
+  max_turns: 18
+  temperature: 0.7
+  top_p: 0.9
+  persona_weights:
+    uncompromising: 0.25
+    selfish: 0.25
+    anchoring: 0.25
+    cooperative: 0.25
 
   extra_kwargs:
     log_completions: true
 
-  # for self-play mode
-  # csv_path: data/casino/train.csv
-  # num_episodes: 50
-  # max_turns: 18
-  # temperature: 0.7
-  # top_p: 0.9
-  # persona_weights:
-  #   uncompromising: 0.25
-  #   selfish: 0.25
-  #   anchoring: 0.25
-  #   cooperative: 0.25
+  # for annotated mode (uncomment and switch mode above to use)
+  # data_path: data/casino/train.jsonl
 
 # resume_from: null
