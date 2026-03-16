@@ -1,175 +1,77 @@
-# ASU - AI for Business: Creating Smart Business Negotiations Bots
+# ASU - AI for Business: Creating Smart Business Negotiation Bots
 
-- [Resources](#resources)
+- [Overview](#overview)
 - [Setup](#setup)
-  - [(A) Get a GPU Shell on SOL](#a-get-a-gpu-shell-on-sol)
-  - [(B) Load required cluster modules](#b-load-required-cluster-modules)
-  - [Create and activate virtual environment](#create-and-activate-virtual-environment)
-  - [(D) Clone repo](#d-clone-repo)
-  - [(E) Install core dependencies (GPU-ready)](#e-install-core-dependencies-gpu-ready)
-  - [(F) Verify PyTorch sees the GPU](#f-verify-pytorch-sees-the-gpu)
-  - [(G) Install vLLM](#g-install-vllm)
-- [Recommendations (Optional)](#recommendations-optional)
-- [Usage](#usage)
-  - [Terminal A](#terminal-a)
-  - [Terminal B](#terminal-b)
+- [Training](#training)
+- [Datasets](#datasets)
 - [Troubleshooting](#troubleshooting)
-  - [Common Issues](#common-issues)
-- [Getting Help](#getting-help)
 
-## Resources
+## Overview
 
-- [Measuring Bargaining Abilities of LLMs: A Benchmark and A Buyer-Enhancement Method](https://aclanthology.org/2024.findings-acl.213.pdf)
-- [RetinalGPT: A Retinal Clinical Preference Conversational Assistant Powered by Large Vision-Language Models](https://arxiv.org/abs/2503.03987)
-- [Build a Large Language Model](resources/build_a_llm_sebastian_raschka.pdf)
-- [Build a LLM Notebook](https://colab.research.google.com/drive/1WKpDbbpPdSMjzYZv2TnnGPFNX9yTPnQM?authuser=3)
-- [Jira Board](https://capstone-fall-2025-yalin-wang.atlassian.net/jira/software/projects/SCRUM/summary)
-- Fork of the [SysEval-NegoLLMs](https://github.com/dhruvb26/SysEval-NegoLLMs) repository
+This project trains and evaluates LLMs as negotiation agents. Two LLMs are pitted against each other — one as a **buyer** and one as a **seller** — and negotiate over real product listings. The goal is to improve negotiation ability through supervised fine-tuning (SFT) and reinforcement learning (GRPO), then measure performance against a baseline model (GPT-4o).
 
-> **Need help?** Check out the [ASU Research Computing guide](https://asurc.atlassian.net/wiki/spaces/RC/pages/2319417345/A+Brief+Example#Step-3---Use-/-Test) for detailed setup instructions.
+**`benchmark/`** contains the initial implementations from our project to test out buyer/seller negotiation capabilities of the models. It runs multi-turn buyer-vs-seller dialogs between two LLMs and scores each negotiation on deal rate, profit, and action validity. A "testing model" is benchmarked in both roles (buyer and seller) against GPT-4o across hundreds of products.
 
-# Setup
+**`rl/`** is the training pipeline. It uses GRPO (Group Relative Policy Optimization) and self-play to improve a model's negotiation strategy through reward-driven optimization. Rewards are based on deal success, price favorability, and format compliance. Built on [TRL](https://huggingface.co/docs/trl), [PEFT](https://huggingface.co/docs/peft), and [Transformers](https://huggingface.co/docs/transformers). Training metrics are visualized with [Trackio](https://www.gradio.app/docs/gradio/trackio).
 
-### (A) Clone repo
+**`finetune/`** handles supervised fine-tuning with LoRA adapters. Models are first fine-tuned on negotiation dialog datasets before moving to RL training.
 
-```bash
-git clone https://github.com/dhruvb26/cse485-capstone.git
-cd cse485-capstone
+**`data/`** includes download scripts and preprocessing handlers for the negotiation datasets used across training and evaluation.
 
-```
+> **Need help?** Check out the [ASU Research Computing Guide](https://asurc.atlassian.net/wiki/spaces/RC/pages/2319417345/A+Brief+Example#Step-3---Use-/-Test) for detailed setup instructions.
 
-### (B) Get a GPU Shell on SOL
+## Setup
+
+### 1. Get a GPU shell on SOL
 
 ```bash
-# For new sessions
 interactive -p htc -t 2:00:00 --gres=gpu:a100:1
-
-# If already in an interactive session
-salloc -p htc -t 2:00:00 --gres=gpu:a100:1
 ```
 
-Wait until something like:
+### 2. Load modules and create environment
 
 ```bash
-[ltnguy58@sg0XX ~]$
-```
-
-"sg\*" means GPU node.
-
-> **Resource Limits**: HTC partition provides up to 240 minutes with a single A100 GPU
-
-### (C) Load required cluster modules
-
-```bash
-# Load package manager
 module load mamba/latest
-
-# Load CUDA drivers
 module load cuda-12.6.1-gcc-12.1.0
 
-module list
-```
-
-### (D) Install core dependencies + create and activate virtual environment
-
-```bash
-mamba env remove -n venv # OPTIONAL: if you want to wipe old env
-
-mamba env create -f environment.yml
-
-conda activate venv
-```
-
-### (E) (Optional) Verify PyTorch, CUDA, and vLLM versions:
-
-```bash
-python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
-python -c "import torch; print(torch.cuda.get_device_name(0))"
-python -c "import vllm; print('vLLM:', vllm.__version__)"
-```
-
-You should see something like:
-
-```bash
-2.x.x 12.1 True
-NVIDIA A100-SXM4-80GB
-vLLM: 0.11.0
-```
-
-# Usage
-
-**_Important: Open 2 terminals, one for vLLM and the other one for actual application_**
-
-### (A) Set env vars & cache dirs
-
-```bash
-export USER="ltnguy58" # IMPORTANT: put your ASU alias here
-export VLLM_MODEL="mistralai/Mistral-7B-Instruct-v0.2" # or Qwen/Qwen2.5-7B-Instruct
-export VLLM_PORT=8000
-export VLLM_HOST="0.0.0.0"
-export VLLM_CACHE_DIR=$SCRATCH/$USER/hf_cache_mistral # or hf_cache_gwen
-mkdir -p $VLLM_CACHE_DIR
-```
-
-### (B) Load modules + env
-
-```bash
-module load mamba/latest
-module load cuda-12.1.1-gcc-12.1.0
 mamba env create -f environment.yml
 conda activate venv
 ```
 
-## Terminal A
-### Launch vLLM
-
-``` bash
-# launch the server
-python -m vllm.entrypoints.openai.api_server \
-  --model $VLLM_MODEL \
-  --port  $VLLM_PORT \
-  --dtype float16 \
-  --tensor-parallel-size 1 \
-  --download-dir $VLLM_CACHE_DIR
-```
-
-This is going to run the vLLM server locally. Initalizing the model takes a while, you are free to proceed if you see this message:
+### 3. Verify GPU allocation (optional)
 
 ```bash
-...
-(APIServer pid=2689620) INFO:     Started server process [2689620]
-(APIServer pid=2689620) INFO:     Waiting for application startup.
-(APIServer pid=2689620) INFO:     Application startup complete.
+nvidia-smi
 ```
 
-## Terminal B
+## Training
 
-### Start the chatbot
+Submit training jobs to the SOL cluster using the `scripts/rl.sh` script:
 
 ```bash
-cd ~/cse485-capstone
-python main.py
+sbatch scripts/rl.sh generate   # produce annotated SFT data via OpenAI-compatible API
+sbatch scripts/rl.sh train      # run SFT training with LoRA
+sbatch scripts/rl.sh grpo       # run GRPO training
+sbatch scripts/rl.sh all        # run generate → train → grpo sequentially
 ```
 
-## Recommendations (Optional)
+Monitor job status and logs:
 
-To keep the code manageable, we recommend using the [Ruff](https://marketplace.cursorapi.com/items/?itemName=charliermarsh.ruff) to check for code style issues. It can be installed in the extension marketplace of your IDE.
-
-These are the settings for the `settings.json` file:
-
-```json
-"[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-      "source.fixAll.ruff": "explicit",
-      "source.organizeImports.ruff": "explicit"
-    }
-  },
-  "ruff.path": ["uv", "run", "ruff"],
-  "ruff.fixAll": true,
-  "ruff.organizeImports": true,
+```bash
+squeue -u $USER                 # check job status
+cat logs/slurm_<job_id>.out     # view output
+cat logs/slurm_<job_id>.err     # view errors
 ```
+
+## Datasets
+
+Datasets can be downloaded with the CLI tool:
+
+```bash
+python data/download.py --dataset <name>
+```
+
+Available datasets: `amazon_history_price`, `casino`, `craigslist_bargains`, `dnd`, `ji`, `ebay_best_offer`. See [`DATASETS.md`](data/DATASETS.md) for full details on each.
 
 ## Troubleshooting
 
@@ -185,38 +87,17 @@ These are the settings for the `settings.json` file:
 - Verify CUDA module is loaded: `module list`
 - Confirm virtual environment activation: `which python`
 
-**Important about `testing_model.py`**
+**Author identity unknown:**
 
-The code routes by prefix, if `gpt-*`, the program will use ChatGPT instead of anything else.
-
-**Using Different Models**
-
-To use local Gwen, set this in `main.py`:
-
-```python
-run_session(
-    testing_model="Qwen/Qwen2.5-7B-Instruct",  # or Qwen/Qwen2.5-7B-Chat
-    product_limit=12,
-    dataset_dir="data/amazon_history_price",
-)
-```
-
-**Author identity unknown**
-
-`git config --global` wants to write to `~/.gitconfig` (which lives in $HOME). On certain SOL login or compute nodes, $HOME may be unset inside your job environment (it’s a known bug with interactive sessions). So Git can’t find the right location to store the global config.
+`git config --global` wants to write to `~/.gitconfig` (which lives in $HOME). On certain SOL login or compute nodes, $HOME may be unset inside your job environment (it's a known bug with interactive sessions). So Git can't find the right location to store the global config.
 
 To fix, run:
-``` bash 
+
+```bash
 export HOME=/home/YOUR_ASU_ALIAS
 git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
-## Getting Help
-
-- ASU Research Computing Support: [RC Documentation](https://asurc.atlassian.net/wiki/spaces/RC)
-- Project Issues: Create an issue in the repository
-- Technical Questions: Consult course materials or instructor
-
-**Course**: CSE 485/486 - Capstone Project I/II</br>
+**Course**: CSE 485/486 - Capstone Project I/II<br>
 **Institution**: Arizona State University
