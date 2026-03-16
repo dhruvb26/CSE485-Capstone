@@ -1,7 +1,6 @@
 model:
   name: Qwen/Qwen2.5-7B-Instruct
   dtype: bfloat16
-  hf_home: /scratch/dbansa11/hf_models
 
 lora:
   r: 16

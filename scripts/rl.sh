@@ -24,13 +24,13 @@ if [[ -z "$TASK" ]] || [[ "$TASK" != "generate" && "$TASK" != "train" && "$TASK"
     exit 1
 fi
 
-export HF_HOME="/scratch/dbansa11/hf_models"
-cd /home/dbansa11/projects/CSE485-Capstone
+export HF_HOME="/scratch/$USER/hf_models"
+cd /home/$USER/projects/CSE485-Capstone
 mkdir -p logs
 
 module load cuda-12.6.1-gcc-12.1.0
 
-PYTHON=/scratch/dbansa11/envs/venv/bin/python
+PYTHON=/scratch/$USER/envs/venv/bin/python
 
 run_generate() {
     $PYTHON -m rl.main generate

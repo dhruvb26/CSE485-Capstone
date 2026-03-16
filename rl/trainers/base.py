@@ -34,7 +34,7 @@ class BaseTrainer(ABC):
         """
         cfg = self.model_config
         if cfg.hf_home:
-            os.environ["HF_HOME"] = cfg.hf_home
+            os.environ["HF_HOME"] = os.path.expandvars(cfg.hf_home)
 
         try:
             model = AutoModelForCausalLM.from_pretrained(

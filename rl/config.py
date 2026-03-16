@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 class ModelConfig:
     name: str
     dtype: str = "bfloat16"
-    hf_home: str = "/scratch/dbansa11/hf_models"
+    hf_home: str = ""
 
 
 @dataclass
