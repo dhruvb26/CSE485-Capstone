@@ -8,8 +8,6 @@
 
 ## Overview
 
-This project trains and evaluates LLMs as negotiation agents. Two LLMs are pitted against each other — one as a **buyer** and one as a **seller** — and negotiate over real product listings. The goal is to improve negotiation ability through supervised fine-tuning (SFT) and reinforcement learning (GRPO), then measure performance against a baseline model (GPT-4o).
-
 **`benchmark/`** contains the initial implementations from our project to test out buyer/seller negotiation capabilities of the models. It runs multi-turn buyer-vs-seller dialogs between two LLMs and scores each negotiation on deal rate, profit, and action validity. A "testing model" is benchmarked in both roles (buyer and seller) against GPT-4o across hundreds of products.
 
 **`rl/`** is the training pipeline. It uses GRPO (Group Relative Policy Optimization) and self-play to improve a model's negotiation strategy through reward-driven optimization. Rewards are based on deal success, price favorability, and format compliance. Built on [TRL](https://huggingface.co/docs/trl), [PEFT](https://huggingface.co/docs/peft), and [Transformers](https://huggingface.co/docs/transformers). Training metrics are visualized with [Trackio](https://github.com/gradio-app/trackio).
