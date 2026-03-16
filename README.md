@@ -10,6 +10,8 @@
 
 **`benchmark/`** contains the initial implementations from our project to test out buyer/seller negotiation capabilities of the models. It runs multi-turn buyer-vs-seller dialogs between two LLMs and scores each negotiation on deal rate, profit, and action validity. A "testing model" is benchmarked in both roles (buyer and seller) against GPT-4o across hundreds of products.
 
+> **Note:** This module should be built upon in the future, when we have decided on the final architecture to be used for our negotiation bot. For now, it remains as a placeholder for future use with some legacy code.
+
 **`rl/`** is the training pipeline. It uses GRPO (Group Relative Policy Optimization) and self-play to improve a model's negotiation strategy through reward-driven optimization. Rewards are based on deal success, price favorability, and format compliance. Built on [TRL](https://huggingface.co/docs/trl), [PEFT](https://huggingface.co/docs/peft), and [Transformers](https://huggingface.co/docs/transformers). Training metrics are visualized with [Trackio](https://github.com/gradio-app/trackio).
 
 > **Helpful Resources:** [OS HuggingFace Cookbook](https://huggingface.co/learn/cookbook/index) and [HuggingFace LLM Course](https://huggingface.co/learn/llm-course/en/chapter0/1).
