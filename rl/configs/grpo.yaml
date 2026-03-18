@@ -9,8 +9,8 @@ model:
   dtype: bfloat16
 
 lora:
-  r: 8
-  lora_alpha: 16
+  r: 16
+  lora_alpha: 32
   lora_dropout: 0.1
   bias: none
   target_modules: all-linear
@@ -20,12 +20,12 @@ grpo:
   sft_checkpoint: checkpoints/sft-tuned
   output_dir: checkpoints/grpo-selfplay
   prompt_split: 0.6
-  num_generations: 4
-  beta: 0.04
+  num_generations: 8
+  beta: 0.0
   num_train_epochs: 2
-  per_device_train_batch_size: 2
-  gradient_accumulation_steps: 2
-  learning_rate: 5.0e-7
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 1.0e-6
   warmup_ratio: 0.1
   logging_steps: 10
   save_strategy: "epoch"
@@ -34,7 +34,7 @@ grpo:
   report_to: trackio
 
   csv_path: data/casino/train.csv
-  num_episodes: 50
+  num_episodes: 200
   max_turns: 18
   temperature: 0.7
   top_p: 0.9
@@ -46,6 +46,9 @@ grpo:
 
   extra_kwargs:
     log_completions: true
+    loss_type: "dr_grpo"
+    scale_rewards: false
+    max_completion_length: 512
 
   # for annotated mode (uncomment and switch mode above to use)
   # data_path: data/casino/train.jsonl

@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=rl-train
-#SBATCH -p htc
+#SBATCH -p general
 #SBATCH -q public
 #SBATCH -A grp_ywang354
-#SBATCH -t 4:00:00
+#SBATCH -t 8:00:00
 #SBATCH --gres=gpu:a100:1
 #SBATCH --constraint=a100_80
 #SBATCH --mem=64G
@@ -15,12 +15,13 @@ set -euo pipefail
 
 TASK="${1:-}"
 
-if [[ -z "$TASK" ]] || [[ "$TASK" != "generate" && "$TASK" != "train" && "$TASK" != "grpo" && "$TASK" != "all" ]]; then
-    echo "Usage: sbatch $0 {generate|train|grpo|all}"
-    echo "  generate  — call OpenAI-compatible API to produce annotated SFT data"
-    echo "  train     — run SFT training with LoRA"
-    echo "  grpo      — run GRPO training (annotated or self-play, set in grpo.yaml)"
-    echo "  all       — run generate, then train, then grpo"
+if [[ -z "$TASK" ]] || [[ "$TASK" != "generate" && "$TASK" != "train" && "$TASK" != "grpo" && "$TASK" != "pipeline" && "$TASK" != "all" ]]; then
+    echo "Usage: sbatch $0 {generate|train|grpo|train+grpo|all}"
+    echo "  generate   — call OpenAI-compatible API to produce annotated SFT data"
+    echo "  train      — run SFT training with LoRA"
+    echo "  grpo       — run GRPO training (annotated or self-play, set in grpo.yaml)"
+    echo "  pipeline   — run SFT training, then GRPO"
+    echo "  all        — run generate, then train, then grpo"
     exit 1
 fi
 
@@ -46,6 +47,9 @@ run_grpo() {
 
 if [[ "$TASK" == "all" ]]; then
     run_generate
+    run_train
+    run_grpo
+elif [[ "$TASK" == "pipeline" ]]; then
     run_train
     run_grpo
 elif [[ "$TASK" == "generate" ]]; then
