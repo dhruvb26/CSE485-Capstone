@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=rl-train
-#SBATCH -p general
+#SBATCH -p public
 #SBATCH -q public
 #SBATCH -A grp_ywang354
 #SBATCH -t 8:00:00
