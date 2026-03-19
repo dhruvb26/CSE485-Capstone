@@ -355,13 +355,12 @@ class SelfPlayGRPOTrainer(BaseTrainer):
 
     def build_trainer(self, train_dataset: Dataset) -> GRPOTrainer:
         cfg = self.self_play_config
-        self._patch_chat_template()
 
         training_args = GRPOConfig(
             output_dir=cfg.output_dir,
             num_generations=cfg.num_generations,
             beta=cfg.beta,
-            num_train_epochs=cfg.num_train_epochs,
+            num_train_epochs=1,
             per_device_train_batch_size=cfg.per_device_train_batch_size,
             gradient_accumulation_steps=cfg.gradient_accumulation_steps,
             learning_rate=cfg.learning_rate,
@@ -385,6 +384,36 @@ class SelfPlayGRPOTrainer(BaseTrainer):
             processing_class=self.tokenizer,
             peft_config=peft_config,
         )
+
+    def train(self, resume_from: str | None = None) -> None:
+        if self.model is None or self.tokenizer is None:
+            self.load_model()
+
+        cfg = self.self_play_config
+        self._patch_chat_template()
+
+        for iteration in range(cfg.num_online_iterations):
+            logger.info(f"Online iteration {iteration + 1}/{cfg.num_online_iterations}")
+
+            dataset = self.prepare_dataset()
+            trainer = self.build_trainer(dataset)
+
+            if iteration == 0 and resume_from:
+                ckpt = True if resume_from == "latest" else resume_from
+            else:
+                ckpt = None
+
+            trainer.train(resume_from_checkpoint=ckpt)
+            trainer.save_model()
+
+            self.model = trainer.model.merge_and_unload()
+            logger.info(f"Merged LoRA adapters after iteration {iteration + 1}")
+
+        merged_path = os.path.join(cfg.output_dir, "merged-final")
+        os.makedirs(merged_path, exist_ok=True)
+        self.model.save_pretrained(merged_path)
+        self.tokenizer.save_pretrained(merged_path)
+        logger.info(f"Training complete. Merged model saved to {merged_path}")
 
     @classmethod
     def run(

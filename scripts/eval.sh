@@ -8,8 +8,8 @@
 #SBATCH --constraint=a100_80
 #SBATCH --mem=64G
 #SBATCH -c 8
-#SBATCH --output=logs/slurm_%j.out
-#SBATCH --error=logs/slurm_%j.err
+#SBATCH --output=logs/jobs/slurm_%j.out
+#SBATCH --error=logs/jobs/slurm_%j.err
 
 set -euo pipefail
 

@@ -81,6 +81,7 @@ class SelfPlayConfig:
     num_generations: int = 8
     beta: float = 0.04
     num_train_epochs: int = 1
+    num_online_iterations: int = 3
     per_device_train_batch_size: int = 4
     gradient_accumulation_steps: int = 2
     learning_rate: float = 5e-7
