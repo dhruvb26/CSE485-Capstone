@@ -164,7 +164,8 @@ def thought_judge_reward(completions, **kwargs) -> list[float]:
                     action=action,
                 ),
             )
-            score = float(json.loads(raw)["score"])
+            m = re.search(r"\{[^}]*\}", raw)
+            score = float(json.loads(m.group())["score"]) if m else 0.0
             rewards.append(max(0.0, min(10.0, score)) / 10.0)
         except Exception as exc:
             logger.exception("Judge call failed for completion {} ({})", i, exc)
