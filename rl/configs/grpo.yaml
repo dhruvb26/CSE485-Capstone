@@ -16,6 +16,11 @@ lora:
   target_modules: all-linear
   task_type: CAUSAL_LM
 
+judge:
+  model: anthropic/claude-haiku-4.5
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
+
 grpo:
   sft_checkpoint: checkpoints/sft-tuned
   output_dir: checkpoints/grpo-selfplay

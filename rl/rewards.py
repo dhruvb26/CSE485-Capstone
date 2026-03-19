@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 
 from loguru import logger
@@ -23,6 +22,38 @@ from rl.utils import (
 )
 
 _judge_client: OpenAI | None = None
+_judge_model: str = ""
+
+
+def configure_judge(
+    *,
+    model: str,
+    base_url: str = "",
+    api_key_env: str = "OPENROUTER_API_KEY",
+) -> None:
+    """Initialise the shared judge client. Must be called before training.
+
+    The API key is read from the env variable named by *api_key_env*.
+    For OpenRouter BYOK, configure your provider key in the OpenRouter
+    dashboard — the API call itself always authenticates with the
+    OpenRouter key.
+    """
+    import os
+
+    global _judge_client, _judge_model
+    if not model:
+        raise ValueError("judge.model is required but was empty")
+
+    api_key = os.environ.get(api_key_env, "")
+    if not api_key:
+        raise EnvironmentError(f"${api_key_env} is not set in the environment")
+
+    kwargs: dict = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    _judge_client = OpenAI(**kwargs)
+    _judge_model = model
+    logger.info("Judge configured: model={} base_url={}", model, base_url or "(default)")
 
 
 @retry(
@@ -33,7 +64,7 @@ _judge_client: OpenAI | None = None
 )
 def _judge_call(client: OpenAI, *, system_prompt: str, user_content: str) -> str:
     response = client.chat.completions.create(
-        model="gpt-5-mini-2025-08-07",
+        model=_judge_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
@@ -78,7 +109,7 @@ def length_reward(completions, **kwargs) -> list[float]:
 def thought_judge_reward(completions, **kwargs) -> list[float]:
     """
     LLM-as-a-judge reward that evaluates the quality of the ``<thought>`` tag
-    using the OpenAI API.
+    using an OpenAI-compatible API (OpenAI, OpenRouter, etc.).
 
     Sends each completion's thought (and action, when present) along with the
     agent's negotiation context to a judge model. The judge returns a 0-10
@@ -101,9 +132,10 @@ def thought_judge_reward(completions, **kwargs) -> list[float]:
         0.0 for completions missing a ``<thought>`` tag or when the API call
         fails.
     """
-    global _judge_client
     if _judge_client is None:
-        _judge_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        raise RuntimeError(
+            "Judge not configured. Call configure_judge() before training."
+        )
 
     system_prompts: list[str] = kwargs.get("system_prompt", [])
     rewards: list[float] = []

@@ -29,6 +29,12 @@ export HF_HOME="/scratch/$USER/hf_models"
 cd /home/$USER/projects/CSE485-Capstone
 mkdir -p logs
 
+if [[ -f .env ]]; then
+    set -a
+    source .env
+    set +a
+fi
+
 module load cuda-12.6.1-gcc-12.1.0
 module load mamba/latest
 source activate /scratch/$USER/envs/venv

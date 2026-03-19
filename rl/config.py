@@ -62,9 +62,17 @@ class GRPOTrainerConfig:
 
 
 @dataclass
+class JudgeConfig:
+    model: str = ""
+    base_url: str = ""
+    api_key_env: str = "OPENROUTER_API_KEY"
+
+
+@dataclass
 class SelfPlayConfig:
     sft_checkpoint: str
     csv_path: str
+    judge: JudgeConfig = field(default_factory=JudgeConfig)
     lora: LoRAConfig = field(default_factory=LoRAConfig)
     output_dir: str = "checkpoints/grpo-selfplay"
     prompt_split: float = 0.5

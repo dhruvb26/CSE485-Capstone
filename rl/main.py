@@ -132,14 +132,22 @@ def run_sft(cfg: dict) -> None:
 
 
 def run_grpo(cfg: dict) -> None:
-    from rl.config import GRPOTrainerConfig, LoRAConfig, ModelConfig, SelfPlayConfig
+    from rl.config import (
+        GRPOTrainerConfig,
+        JudgeConfig,
+        LoRAConfig,
+        ModelConfig,
+        SelfPlayConfig,
+    )
     from rl.trainers import AnnotatedGRPOTrainer, SelfPlayGRPOTrainer
 
     mode = cfg.get("mode", "self_play")
     model_cfg = ModelConfig(**cfg["model"])
     lora_cfg = LoRAConfig(**cfg.get("lora", {}))
+    judge_cfg = JudgeConfig(**cfg.get("judge", {}))
     grpo_params = {k: v for k, v in cfg.get("grpo", {}).items()}
     grpo_params["lora"] = lora_cfg
+    grpo_params["judge"] = judge_cfg
 
     if mode == "self_play":
         SelfPlayGRPOTrainer.run(
