@@ -242,43 +242,45 @@ def format_reward(completions, **kwargs) -> list[float]:
 
 def outcome_reward(completions, **kwargs) -> list[float]:
     """
-    Trajectory-level reward based on the negotiation outcome.
+    Completion-level reward based on the agent's selected action.
 
-    Uses the ``episode_outcome`` and ``episode_learner_points`` columns
-    produced by the self-play rollout to assign a reward that reflects whether
-    the overall negotiation succeeded and how many points the learner secured.
+    This function inspects each completion's ``<action>...</action>`` tag
+    directly (instead of using episode-level outcome metadata from
+    ``prepare_dataset``).
 
     Rewards:
-      - Successful deal: ``learner_points / max_points`` (in [0.0, 1.0]).
-      - Failed negotiation (walk_away, reject_loop, max_turns): -0.5.
-
-    Every turn in the same episode receives the same trajectory reward, which
-    lets the policy learn that the *sequence* of actions led to the outcome.
+      - ``[ACCEPT_DEAL]``: ``1.0``
+      - ``[SUBMIT_DEAL]`` but not ``[ACCEPT_DEAL]``: ``0.3``
+      - ``[WALK_AWAY]``: ``-0.5``
+      - ``[TALK]`` or any other action (or missing ``<action>`` tag): ``0.0``
 
     Args:
         completions: List of completions from the model.
-        **kwargs: Must contain ``episode_outcome`` (list of str),
-            ``episode_learner_points`` (list of int/float), and
-            ``max_points`` (list of int/float) — all populated by
-            :class:`SelfPlayGRPOTrainer.prepare_dataset`.
+        **kwargs: Unused (kept for GRPOTrainer compatibility).
 
     Returns:
         A list of float rewards, one per completion.
     """
-    outcomes: list[str] = kwargs.get("episode_outcome", [])
-    learner_points: list[float] = kwargs.get("episode_learner_points", [])
-    max_pts: list[float] = kwargs.get("max_points", [])
-
     rewards: list[float] = []
-    for i, _completion in enumerate(completions):
-        outcome = outcomes[i] if i < len(outcomes) else "max_turns"
-        pts = float(learner_points[i]) if i < len(learner_points) else -1
-        mp = float(max_pts[i]) if i < len(max_pts) else 36
+    for completion in completions:
+        text = (
+            completion[0]["content"]
+            if isinstance(completion, list)
+            else str(completion)
+        )
+        action = extract_tag(text, "action")
+        if action is None:
+            rewards.append(0.0)
+            continue
 
-        if outcome == "deal" and pts >= 0 and mp > 0:
-            rewards.append(pts / mp)
-        else:
+        if re.search(r"\[ACCEPT_DEAL\]", action, re.IGNORECASE):
+            rewards.append(1.0)
+        elif re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
+            rewards.append(0.3)
+        elif re.search(r"\[WALK_AWAY\]", action, re.IGNORECASE):
             rewards.append(-0.5)
+        else:
+            rewards.append(0.0)
 
     return rewards
 
