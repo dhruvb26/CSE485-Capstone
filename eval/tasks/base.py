@@ -11,6 +11,33 @@ import json
 from eval import utils
 
 
+def _extract_last_answer(text):
+    """Return the content of the last <answer>...</answer> block, or None."""
+    end = text.rfind("</answer>")
+    if end == -1:
+        return None
+    start = text.rfind("<answer>", 0, end)
+    if start == -1:
+        return None
+    return text[start + len("<answer>"):end].strip()
+
+
+def _extract_last_json_answer(raw):
+    """Return the content of the last <answer>{...}</answer> block, or None."""
+    search_end = len(raw)
+    while True:
+        end = raw.rfind("</answer>", 0, search_end)
+        if end == -1:
+            return None
+        start = raw.rfind("<answer>", 0, end)
+        if start == -1:
+            return None
+        inner = raw[start + len("<answer>"):end].strip()
+        if inner.startswith("{") and inner.endswith("}"):
+            return inner
+        search_end = start
+
+
 class KBaseTaskHandler:
     """Base handler for every task (K-variant)."""
 
@@ -428,18 +455,19 @@ class KBaseTaskHandler:
                 continue
             final_prompts.append(prompt)
             final_ground_truth.append(gt)
-            answer = outputs_dict[prompt]
+            raw = outputs_dict[prompt]
 
-            if cot_bool:
-                if "<answer>" not in answer or "</answer>" not in answer:
-                    final_predictions.append("Manual prediction extraction required.")
-                    continue
-                start = answer.find("<answer>") + len("<answer>")
-                end = answer.find("</answer>")
-                answer = answer[start:end]
+            inner = _extract_last_answer(raw)
+            if inner is not None:
+                answer = inner
+            elif cot_bool:
+                final_predictions.append("Manual prediction extraction required.")
+                continue
+            else:
+                answer = raw
 
-            if answer in possible_outputs:
-                final_predictions.append(answer)
+            if answer.strip() in possible_outputs:
+                final_predictions.append(answer.strip())
             elif any([po in answer.replace("YOU", "a").replace("THEM", "a") for po in possible_outputs]):
                 list_of_words = []
                 for word in answer.replace("YOU", "a").replace("THEM", "a").split(" "):
@@ -484,12 +512,13 @@ class KBaseTaskHandler:
             final_ground_truth.append(gt)
 
             pred = {}
-            start = outputs_dict[prompt].find("<answer>") + len("<answer>")
-            end = outputs_dict[prompt].find("</answer>")
-            answer = outputs_dict[prompt][start:end]
+            raw = outputs_dict[prompt]
+            inner = _extract_last_json_answer(raw)
+            if inner is None:
+                inner = _extract_last_answer(raw) or ""
 
             try:
-                answer = answer.replace("\n", "").replace(" ", "")
+                answer = inner.replace("\n", "").replace(" ", "")
                 annotations = json.loads(answer)
                 assert len(annotations) == len(possible_keys)
                 for k, v in annotations.items():
@@ -752,18 +781,19 @@ class WBaseTaskHandler:
                 continue
             final_prompts.append(prompt)
             final_ground_truth.append(gt)
-            answer = outputs_dict[prompt]
+            raw = outputs_dict[prompt]
 
-            if cot_bool:
-                if "<answer>" not in answer or "</answer>" not in answer:
-                    final_predictions.append("Manual prediction extraction required.")
-                    continue
-                start = answer.find("<answer>") + len("<answer>")
-                end = answer.find("</answer>")
-                answer = answer[start:end]
+            inner = _extract_last_answer(raw)
+            if inner is not None:
+                answer = inner
+            elif cot_bool:
+                final_predictions.append("Manual prediction extraction required.")
+                continue
+            else:
+                answer = raw
 
-            if answer in possible_outputs:
-                final_predictions.append(answer)
+            if answer.strip() in possible_outputs:
+                final_predictions.append(answer.strip())
             elif any([po in answer.replace("YOU", "a").replace("THEM", "a") for po in possible_outputs]):
                 list_of_words = []
                 for word in answer.replace("YOU", "a").replace("THEM", "a").split(" "):
@@ -786,12 +816,13 @@ class WBaseTaskHandler:
             final_ground_truth.append(gt)
 
             pred = {}
-            start = outputs_dict[prompt].find("<answer>") + len("<answer>")
-            end = outputs_dict[prompt].find("</answer>")
-            answer = outputs_dict[prompt][start:end]
+            raw = outputs_dict[prompt]
+            inner = _extract_last_json_answer(raw)
+            if inner is None:
+                inner = _extract_last_answer(raw) or ""
 
             try:
-                answer = answer.replace("\n", "").replace(" ", "")
+                answer = inner.replace("\n", "").replace(" ", "")
                 annotations = json.loads(answer)
                 assert len(annotations) == len(possible_keys)
                 for k, v in annotations.items():
