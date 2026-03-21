@@ -17,6 +17,7 @@ Config example:
 """
 
 import os
+import re
 from tqdm import tqdm
 from .base import BaseModelHandler
 
@@ -110,7 +111,11 @@ class LocalModelHandler(BaseModelHandler):
                 pad_token_id=self.tokenizer.pad_token_id,
             )
             new_tokens = generated[0][model_inputs["input_ids"].shape[1]:]
-            output_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+            output_text = self.tokenizer.decode(new_tokens, skip_special_tokens=False).strip()
+            output_text = re.sub(r"<think>.*?</think>", "", output_text, flags=re.DOTALL).strip()
+            for tok in self.tokenizer.all_special_tokens:
+                output_text = output_text.replace(tok, "")
+            output_text = output_text.strip()
 
             outputs[inputs[index]] = output_text
 

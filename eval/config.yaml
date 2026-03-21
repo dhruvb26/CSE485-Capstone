@@ -2,8 +2,8 @@ models:
   - type: local_model
     model_path: Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled
     label: qwen3.5-9b-opus-reasoning-distilled
-    max_new_tokens: 256
-    token_limit: 4096
+    max_new_tokens: 4096
+    token_limit: 16384
 
 #  - type: open_ai
 #    model_str: gpt-4o-mini-2024-07-18
