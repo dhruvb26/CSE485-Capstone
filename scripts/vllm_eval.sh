@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=vllm-eval
-#SBATCH -p public
+#SBATCH -p htc
 #SBATCH -q public
 #SBATCH -A grp_ywang354
 #SBATCH -t 4:00:00
@@ -36,33 +36,15 @@ PYTHON=python
 echo "Starting vLLM server for $MODEL on port $PORT ..."
 $PYTHON -m vllm.entrypoints.openai.api_server \
     --model "$MODEL" \
+    --model-impl transformers \
     --port "$PORT" \
     --dtype auto \
     --max-model-len 8192 \
     --gpu-memory-utilization 0.90 \
-    &> logs/vllm_server_${SLURM_JOB_ID}.log &
+    &> logs/jobs/vllm_server_${SLURM_JOB_ID}.log &
 
 VLLM_PID=$!
 echo "vLLM server PID: $VLLM_PID"
-
-echo "Waiting for vLLM server to be ready ..."
-MAX_WAIT=300
-WAITED=0
-until curl -sf http://localhost:${PORT}/health > /dev/null 2>&1; do
-    if ! kill -0 "$VLLM_PID" 2>/dev/null; then
-        echo "ERROR: vLLM server process died. Check logs/vllm_server_${SLURM_JOB_ID}.log"
-        exit 1
-    fi
-    if [[ $WAITED -ge $MAX_WAIT ]]; then
-        echo "ERROR: vLLM server did not start within ${MAX_WAIT}s"
-        kill "$VLLM_PID" 2>/dev/null || true
-        exit 1
-    fi
-    sleep 5
-    WAITED=$((WAITED + 5))
-    echo "  ... waited ${WAITED}s"
-done
-echo "vLLM server ready after ${WAITED}s"
 
 cleanup() {
     echo "Shutting down vLLM server (PID $VLLM_PID) ..."
