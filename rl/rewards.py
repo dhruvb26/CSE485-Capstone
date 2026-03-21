@@ -18,7 +18,6 @@ from rl.utils import (
     extract_tag,
     last_opponent_action_is_submit,
     parse_submit_deal,
-    prompt_to_text,
 )
 
 _judge_client: OpenAI | None = None
@@ -296,7 +295,9 @@ def arithmetic_reward(completions, **kwargs) -> list[float]:
        discussed deal in the conversation.  The discussed deal is extracted
        from (a) the last ``<thought>`` tag with explicit ``N item x M pts``
        arithmetic for all three items, or (b) the last ``[SUBMIT_DEAL]`` in
-       the prompt.  If no prior deal can be determined the check is skipped.
+       assistant-role messages only (so opponent deals are not mistaken for
+       the learner's intent).  If no prior deal can be determined the check
+       is skipped.
 
     Completions without a ``[SUBMIT_DEAL]`` action receive a neutral 0.5.
     Malformed or inconsistent deals receive 0.0.
@@ -336,7 +337,7 @@ def arithmetic_reward(completions, **kwargs) -> list[float]:
             continue
 
         prompt = prompts[i] if i < len(prompts) else ""
-        discussed = extract_discussed_deal(prompt_to_text(prompt))
+        discussed = extract_discussed_deal(prompt)
         if discussed is not None and discussed != deal:
             rewards.append(0.0)
             continue

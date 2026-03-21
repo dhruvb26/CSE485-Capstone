@@ -42,20 +42,38 @@ def prompt_to_text(prompt) -> str:
     return str(prompt)
 
 
-def extract_discussed_deal(conversation_text: str) -> dict[str, int] | None:
+def extract_discussed_deal(prompt) -> dict[str, int] | None:
     """Return the most recently discussed deal (agent's own allocation).
+
+    Accepts a message list (``list[dict]``) or a flat string.
 
     Strategy (in priority order):
       1. Last ``<thought>`` that contains ``N item x M pts`` arithmetic for all
          three items.  The *first* mention of each item is taken (thoughts list
-         the agent's allocation before the opponent's).
-      2. Last ``[SUBMIT_DEAL]`` action in the conversation.
+         the agent's allocation before the opponent's).  Opponent thoughts are
+         already stripped before being added to learner messages, so every
+         ``<thought>`` in the prompt belongs to the learner.
+      2. Last ``[SUBMIT_DEAL]`` in **assistant-role messages only**, so that
+         opponent deals are not mistaken for the learner's intent.
 
     Thoughts are checked first because they reflect the latest conversational
     state, whereas a ``[SUBMIT_DEAL]`` might have been rejected earlier.
     """
+    if isinstance(prompt, list):
+        full_text = "\n".join(
+            msg.get("content", "") for msg in prompt if isinstance(msg, dict)
+        )
+        assistant_text = "\n".join(
+            msg.get("content", "")
+            for msg in prompt
+            if isinstance(msg, dict) and msg.get("role") == "assistant"
+        )
+    else:
+        full_text = str(prompt)
+        assistant_text = full_text
+
     thoughts = list(
-        re.finditer(r"<thought>(.*?)</thought>", conversation_text, re.DOTALL)
+        re.finditer(r"<thought>(.*?)</thought>", full_text, re.DOTALL)
     )
     for thought_match in reversed(thoughts):
         deal: dict[str, int] = {}
@@ -72,7 +90,7 @@ def extract_discussed_deal(conversation_text: str) -> dict[str, int] | None:
     submit_matches = list(
         re.finditer(
             r"\[SUBMIT_DEAL\]\s*food:(\d+)\s*water:(\d+)\s*firewood:(\d+)",
-            conversation_text,
+            assistant_text,
             re.IGNORECASE,
         )
     )

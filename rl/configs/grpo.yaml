@@ -27,7 +27,7 @@ grpo:
   prompt_split: 0.6
   num_generations: 8
   beta: 0.0
-  num_online_iterations: 3
+  num_online_iterations: 1
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 4
   learning_rate: 1.0e-6
