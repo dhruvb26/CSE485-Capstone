@@ -46,7 +46,7 @@ class JIHandler(BaseDatasetHandler):
         template += """\n\nQuestion: $question$"""
 
         if cot_bool:
-            template += """\n\nNOTE: Let's think step-by-step! Put your thoughts in <thinking> </thinking> tags, and put your answer in <answer> </answer> tags. $output_specification$"""
+            template += """\n\nNOTE: Let's think step-by-step! Put your thoughts in <think> </think> tags, and put your answer in <answer> </answer> tags. $output_specification$"""
         else:
             template += " $output_specification$"
 
@@ -75,7 +75,7 @@ class JIHandler(BaseDatasetHandler):
         template += """\n\nQuestion: $question$"""
 
         if cot_bool:
-            template += """\n\nNOTE: Let's think step-by-step! Put your thoughts in <thinking> </thinking> tags, and put your answer in <answer> </answer> tags. $output_specification$"""
+            template += """\n\nNOTE: Let's think step-by-step! Put your thoughts in <think> </think> tags, and put your answer in <answer> </answer> tags. $output_specification$"""
         else:
             template += " $output_specification$"
 

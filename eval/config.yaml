@@ -4,7 +4,7 @@ models:
     model_path: Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled
     trust_remote_code: true
     label: qwen3.5-9b-opus-reasoning-distilled
-    max_new_tokens: 512
+    max_new_tokens: 2048
     token_limit: 8192
 
 # DealOrNoDeal (dnd):
