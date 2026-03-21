@@ -12,6 +12,7 @@ Config example:
   - type: local_model
     model_path: checkpoints/grpo-tuned         # checkpoint dir or HF hub name
     base_model: Qwen/Qwen2.5-3B-Instruct      # required for LoRA adapters
+    trust_remote_code: false                   # Hub models that need custom code
     max_new_tokens: 256
     label: my-grpo-model                       # optional display name for logs
 """
@@ -22,14 +23,50 @@ from tqdm import tqdm
 from .base import BaseModelHandler
 
 
+def _load_pretrained_lm(model_path, trust_remote_code=False):
+    """
+    Load a text-generation model from a checkpoint or Hub id.
+
+    Qwen3.5 VL checkpoints (Qwen3_5ForConditionalGeneration) are not
+    AutoModelForCausalLM; we load them explicitly for text-only eval.
+    """
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+    load_kw = {"device_map": "auto", "dtype": "auto", "trust_remote_code": trust_remote_code}
+    arch = None
+    try:
+        cfg = AutoConfig.from_pretrained(
+            model_path, trust_remote_code=trust_remote_code,
+        )
+        if getattr(cfg, "architectures", None):
+            arch = cfg.architectures[0]
+    except Exception:
+        pass
+
+    if arch == "Qwen3_5ForConditionalGeneration":
+        try:
+            from transformers import Qwen3_5ForConditionalGeneration
+        except ImportError as e:
+            raise ImportError(
+                "This checkpoint is Qwen3_5ForConditionalGeneration; install a "
+                "recent transformers (e.g. >= 4.49) that provides this class."
+            ) from e
+        model = Qwen3_5ForConditionalGeneration.from_pretrained(model_path, **load_kw)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(model_path, **load_kw)
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_path, trust_remote_code=trust_remote_code,
+    )
+    return model, tokenizer
+
+
 class LocalModelHandler(BaseModelHandler):
 
     multishot = False
     cot = False
 
     def setup_model(self):
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-
         model_path = getattr(self.args, "model_path", None)
         base_model = getattr(self.args, "base_model", None)
         if not model_path:
@@ -39,6 +76,7 @@ class LocalModelHandler(BaseModelHandler):
         self.token_limit = getattr(self.args, "token_limit", 4096)
         self._label = getattr(self.args, "label", None)
         self.cot = getattr(self.args, "use_cot", False)
+        trust_remote_code = getattr(self.args, "trust_remote_code", False)
 
         adapter_config = os.path.join(model_path, "adapter_config.json")
         is_lora = os.path.exists(adapter_config)
@@ -52,20 +90,18 @@ class LocalModelHandler(BaseModelHandler):
             from peft import PeftModel
 
             print(f"  Loading base model: {base_model}")
-            self.model = AutoModelForCausalLM.from_pretrained(
-                base_model, device_map="auto", dtype="auto",
+            self.model, self.tokenizer = _load_pretrained_lm(
+                base_model, trust_remote_code=trust_remote_code,
             )
-            self.tokenizer = AutoTokenizer.from_pretrained(base_model)
 
             print(f"  Merging LoRA adapter: {model_path}")
             self.model = PeftModel.from_pretrained(self.model, model_path)
             self.model = self.model.merge_and_unload()
         else:
             print(f"  Loading model from: {model_path}")
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_path, device_map="auto", dtype="auto",
+            self.model, self.tokenizer = _load_pretrained_lm(
+                model_path, trust_remote_code=trust_remote_code,
             )
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
 
         self.tokenizer.padding_side = "left"
         if self.tokenizer.pad_token is None:

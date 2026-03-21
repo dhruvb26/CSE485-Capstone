@@ -1,21 +1,11 @@
 models:
-  - type: vllm_model
-    model_str: Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled
+  - type: local_model
+    # Text-only eval: VL Qwen3.5 checkpoints use Qwen3_5ForConditionalGeneration (see local_model.py).
+    model_path: Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled
+    trust_remote_code: true
     label: qwen3.5-9b-opus-reasoning-distilled
-    base_url: http://localhost:8000/v1
-    max_tokens: 512
+    max_new_tokens: 512
     token_limit: 8192
-
-#  - type: open_ai
-#    model_str: gpt-4o-mini-2024-07-18
-#  - type: open_ai
-#    model_str: gpt-4o-2024-08-06
-#  - type: hf_model
-#    model_str: mistralai/Mistral-7B-Instruct-v0.1
-#  - type: local_model
-#    model_path: checkpoints/grpo-tuned       # LoRA adapter example
-#    base_model: Qwen/Qwen2.5-3B-Instruct    # required if model_path is a LoRA adapter
-#    label: my-grpo-model
 
 # DealOrNoDeal (dnd):
 #   sta_total_item_count_dnd, sta_max_points_dnd, sta_ask_point_values_dnd,
