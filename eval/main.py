@@ -60,6 +60,9 @@ def build_args(config, model_cfg):
         max_new_tokens=model_cfg.get("max_new_tokens", 256),
         token_limit=model_cfg.get("token_limit", 4096),
         label=model_cfg.get("label", ""),
+        # vllm_model fields
+        base_url=model_cfg.get("base_url", "http://localhost:8000/v1"),
+        max_tokens=model_cfg.get("max_tokens", 512),
     )
     return args
 

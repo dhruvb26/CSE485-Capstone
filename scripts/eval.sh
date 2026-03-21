@@ -3,7 +3,7 @@
 #SBATCH -p public
 #SBATCH -q public
 #SBATCH -A grp_ywang354
-#SBATCH -t 6:00:00
+#SBATCH -t 8:00:00
 #SBATCH --gres=gpu:a100:1
 #SBATCH --constraint=a100_80
 #SBATCH --mem=64G

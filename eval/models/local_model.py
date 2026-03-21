@@ -38,6 +38,7 @@ class LocalModelHandler(BaseModelHandler):
         self.max_new_tokens = getattr(self.args, "max_new_tokens", 256)
         self.token_limit = getattr(self.args, "token_limit", 4096)
         self._label = getattr(self.args, "label", None)
+        self.cot = getattr(self.args, "use_cot", False)
 
         adapter_config = os.path.join(model_path, "adapter_config.json")
         is_lora = os.path.exists(adapter_config)

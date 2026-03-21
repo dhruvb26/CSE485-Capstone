@@ -1,9 +1,10 @@
 models:
-  - type: local_model
-    model_path: Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled
+  - type: vllm_model
+    model_str: Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled
     label: qwen3.5-9b-opus-reasoning-distilled
-    max_new_tokens: 4096
-    token_limit: 16384
+    base_url: http://localhost:8000/v1
+    max_tokens: 512
+    token_limit: 8192
 
 #  - type: open_ai
 #    model_str: gpt-4o-mini-2024-07-18
@@ -42,12 +43,23 @@ models:
 #
 # Use "all" to run every task, or "all_dnd", "all_casino", etc. for a dataset.
 tasks:
-  - all_casino
+  - sta_total_item_count_ca
+  - sta_max_points_ca
+  - sta_ask_point_values_ca
+  - sta_ask_high_priority_ca
+  - sta_ask_low_priority_ca
+  - mid_strategy_ca
+  - mid_ask_high_priority_ca
+  - mid_ask_low_priority_ca
+  - mid_partner_ask_high_priority_ca
+  - mid_partner_ask_low_priority_ca
+  - end_deal_specifics_ca
+  - end_deal_total_ca
 
-num_instances: 200       
-max_num_instances: 200   
+num_instances: 50
+max_num_instances: 50
 
-use_cot: false            # chain-of-thought prompting
+use_cot: true             # structured reasoning with <answer> extraction
 num_multishot: 0          # number of multishot examples (0 or 2)
 num_prior_utts: 0         # prior utterances as context (0 = none)
 num_utts_partial_dial: -1 # partial dialogue length (-1 = full)

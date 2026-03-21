@@ -133,6 +133,49 @@ SUPPORTED_CONFIGS = set([
     # CRA + Local
     ("cra", "local_model", "mid_dial_act_cra"),
     ("cra", "local_model", "mid_full_proposal_cra"),
+
+    # DND + vLLM
+    ("dnd", "vllm_model", "sta_total_item_count_dnd"),
+    ("dnd", "vllm_model", "sta_max_points_dnd"),
+    ("dnd", "vllm_model", "mid_dial_act_dnd"),
+    ("dnd", "vllm_model", "mid_gen_resp_dnd"),
+    ("dnd", "vllm_model", "end_deal_specifics_dnd"),
+    ("dnd", "vllm_model", "sta_ask_point_values_dnd"),
+    ("dnd", "vllm_model", "mid_full_proposal_dnd"),
+    ("dnd", "vllm_model", "end_deal_total_dnd"),
+
+    # Casino + vLLM
+    ("casino", "vllm_model", "sta_total_item_count_ca"),
+    ("casino", "vllm_model", "mid_strategy_ca"),
+    ("casino", "vllm_model", "mid_gen_resp_ca"),
+    ("casino", "vllm_model", "end_deal_specifics_ca"),
+    ("casino", "vllm_model", "end_deal_total_ca"),
+    ("casino", "vllm_model", "sta_max_points_ca"),
+    ("casino", "vllm_model", "sta_ask_point_values_ca"),
+    ("casino", "vllm_model", "sta_ask_low_priority_ca"),
+    ("casino", "vllm_model", "sta_ask_high_priority_ca"),
+    ("casino", "vllm_model", "mid_ask_low_priority_ca"),
+    ("casino", "vllm_model", "mid_ask_high_priority_ca"),
+    ("casino", "vllm_model", "mid_partner_ask_low_priority_ca"),
+    ("casino", "vllm_model", "mid_partner_ask_high_priority_ca"),
+    ("casino", "vllm_model", "end_deal_likeness_ca"),
+    ("casino", "vllm_model", "end_deal_satisfaction_ca"),
+    ("casino", "vllm_model", "end_partner_deal_likeness_ca"),
+    ("casino", "vllm_model", "end_partner_deal_satisfaction_ca"),
+
+    # Job Interview + vLLM
+    ("job_interview", "vllm_model", "end_deal_specifics_ji"),
+    ("job_interview", "vllm_model", "sta_ask_high_priority_ji_w"),
+    ("job_interview", "vllm_model", "sta_ask_low_priority_ji_w"),
+    ("job_interview", "vllm_model", "mid_ask_high_priority_ji_w"),
+    ("job_interview", "vllm_model", "mid_ask_low_priority_ji_w"),
+    ("job_interview", "vllm_model", "mid_partner_ask_high_priority_ji_w"),
+    ("job_interview", "vllm_model", "mid_partner_ask_low_priority_ji_w"),
+    ("job_interview", "vllm_model", "mid_dial_act_ji"),
+
+    # CRA + vLLM
+    ("cra", "vllm_model", "mid_dial_act_cra"),
+    ("cra", "vllm_model", "mid_full_proposal_cra"),
 ])
 
 
@@ -147,6 +190,7 @@ CLS_NAME2PATHS = {
         "open_ai": "eval.models.openai_model.OpenAIHandler",
         "hf_model": "eval.models.hf_model.HFModelHandler",
         "local_model": "eval.models.local_model.LocalModelHandler",
+        "vllm_model": "eval.models.vllm_model.VLLMModelHandler",
     },
     "tasks": {
         "sta_total_item_count_dnd": "eval.tasks.sta_total_item_count_dnd.TICNDHandlerDND",
