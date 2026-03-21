@@ -247,10 +247,6 @@ def score_logs(storage_dir):
         print("No evaluable logs found.")
         return
 
-    print(f"\n{'='*70}")
-    print("EVALUATION RESULTS")
-    print(f"{'='*70}")
-
     by_model = {}
     for r in results:
         key = (r["dataset"], r["model"])

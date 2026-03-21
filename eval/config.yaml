@@ -1,7 +1,7 @@
 models:
   - type: local_model
-    model_path: Qwen/Qwen2.5-7B-Instruct
-    label: qwen2.5-7b-instruct
+    model_path: Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled
+    label: qwen3.5-9b-opus-reasoning-distilled
     max_new_tokens: 256
     token_limit: 4096
 
