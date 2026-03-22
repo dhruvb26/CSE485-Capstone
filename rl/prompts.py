@@ -14,6 +14,7 @@ Your reply must always include all 3 parts in this order:
 <action>one of: [TALK] | [SUBMIT_DEAL] food:F water:W firewood:FW | [ACCEPT_DEAL] | [REJECT_DEAL] | [WALK_AWAY]</action>
 
 Note: When using [SUBMIT_DEAL], specify only YOUR allocation. Your neighbor receives the remainder (since totals must sum to 3 for each item).
+When your neighbor proposes a [SUBMIT_DEAL], the values shown represent YOUR allocation — what you would receive.
 
 Here are some examples of completions:
 
@@ -39,6 +40,12 @@ Example 4 — rejecting and countering:
 
 <thought>Too little of what I need. I'll reject and ask for more.</thought>
 <talk>I need more than that. Can you give me an extra package?</talk>
+<action>[REJECT_DEAL]</action>
+
+Example 5 — evaluating a neighbor's offer:
+
+<thought>Their offer gives me food:1 water:0 firewood:2. That's 1x3 + 0x5 + 2x4 = 11 points. I can do better — I'll reject.</thought>
+<talk>That doesn't work for me. I need more water.</talk>
 <action>[REJECT_DEAL]</action>"""
 
 ANNOTATION_SYSTEM_PROMPT = """\

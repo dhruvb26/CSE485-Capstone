@@ -18,6 +18,21 @@ def strip_tags(text: str) -> str:
     )
 
 
+def flip_deal_perspective(text: str) -> str:
+    """Convert ``[SUBMIT_DEAL]`` values from the submitter's to the receiver's perspective."""
+
+    def _flip(m: re.Match) -> str:
+        f, w, fw = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return f"[SUBMIT_DEAL] food:{3 - f} water:{3 - w} firewood:{3 - fw}"
+
+    return re.sub(
+        r"\[SUBMIT_DEAL\]\s*food:(\d+)\s*water:(\d+)\s*firewood:(\d+)",
+        _flip,
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
 def parse_submit_deal(text: str) -> dict[str, int] | None:
     match = re.compile(
         r"\[SUBMIT_DEAL\]\s*food:(\d+)\s*water:(\d+)\s*firewood:(\d+)", re.IGNORECASE

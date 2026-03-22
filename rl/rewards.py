@@ -247,9 +247,10 @@ def outcome_reward(completions, **kwargs) -> list[float]:
     directly (instead of using episode-level outcome metadata from
     ``prepare_dataset``).
 
-    Rewards:
-      - ``[ACCEPT_DEAL]``: ``1.0``
-      - ``[SUBMIT_DEAL]`` but not ``[ACCEPT_DEAL]``: ``0.3``
+    Rewards (reduced to complement ``points_reward`` which provides the
+    score-proportional signal):
+      - ``[ACCEPT_DEAL]``: ``0.5``
+      - ``[SUBMIT_DEAL]`` but not ``[ACCEPT_DEAL]``: ``0.2``
       - ``[WALK_AWAY]``: ``-0.5``
       - ``[TALK]`` or any other action (or missing ``<action>`` tag): ``0.0``
 
@@ -273,9 +274,9 @@ def outcome_reward(completions, **kwargs) -> list[float]:
             continue
 
         if re.search(r"\[ACCEPT_DEAL\]", action, re.IGNORECASE):
-            rewards.append(1.0)
+            rewards.append(0.5)
         elif re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
-            rewards.append(0.3)
+            rewards.append(0.2)
         elif re.search(r"\[WALK_AWAY\]", action, re.IGNORECASE):
             rewards.append(-0.5)
         else:
@@ -343,5 +344,82 @@ def arithmetic_reward(completions, **kwargs) -> list[float]:
             continue
 
         rewards.append(1.0)
+
+    return rewards
+
+
+def points_reward(completions, **kwargs) -> list[float]:
+    """
+    Reward proportional to the learner's points from deal actions.
+
+    Uses the per-item point values stored in the dataset (``food_points``,
+    ``water_points``, ``firewood_points``) and the opponent's last offer
+    (``last_opponent_offer``) to compute the learner's score.
+
+    For ``[SUBMIT_DEAL]``, the deal numbers are the learner's own allocation.
+    For ``[ACCEPT_DEAL]``, ``last_opponent_offer`` already contains the
+    learner's allocation (the deal was flipped to the learner's perspective
+    during episode generation).  The raw score is normalised to [0, 1] by
+    dividing by ``max_points`` (36).
+
+    Non-deal actions receive 0.0; ``[WALK_AWAY]`` receives -0.5.
+
+    Args:
+        completions: List of completions from the model.
+        **kwargs: Must contain ``food_points``, ``water_points``,
+            ``firewood_points``, ``max_points``, and ``last_opponent_offer``
+            lists forwarded from the dataset columns.
+
+    Returns:
+        A list of float rewards, one per completion.
+    """
+    food_pts: list = kwargs.get("food_points", [])
+    water_pts: list = kwargs.get("water_points", [])
+    fire_pts: list = kwargs.get("firewood_points", [])
+    max_pts: list = kwargs.get("max_points", [])
+    opponent_offers: list = kwargs.get("last_opponent_offer", [])
+
+    rewards: list[float] = []
+    for i, completion in enumerate(completions):
+        text = (
+            completion[0]["content"]
+            if isinstance(completion, list)
+            else str(completion)
+        )
+        action = extract_tag(text, "action")
+        if action is None:
+            rewards.append(0.0)
+            continue
+
+        fp = food_pts[i] if i < len(food_pts) else 3
+        wp = water_pts[i] if i < len(water_pts) else 3
+        fwp = fire_pts[i] if i < len(fire_pts) else 3
+        mp = max_pts[i] if i < len(max_pts) else 36
+
+        if re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
+            deal = parse_submit_deal(action)
+            if deal is None:
+                rewards.append(0.0)
+                continue
+            score = deal["food"] * fp + deal["water"] * wp + deal["firewood"] * fwp
+            rewards.append(score / mp)
+
+        elif re.search(r"\[ACCEPT_DEAL\]", action, re.IGNORECASE):
+            raw = opponent_offers[i] if i < len(opponent_offers) else "null"
+            alloc = json.loads(raw) if isinstance(raw, str) else raw
+            if alloc is None:
+                rewards.append(0.0)
+                continue
+            score = (
+                alloc["food"] * fp
+                + alloc["water"] * wp
+                + alloc["firewood"] * fwp
+            )
+            rewards.append(score / mp)
+
+        elif re.search(r"\[WALK_AWAY\]", action, re.IGNORECASE):
+            rewards.append(-0.5)
+        else:
+            rewards.append(0.0)
 
     return rewards

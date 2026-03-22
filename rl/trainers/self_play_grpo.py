@@ -21,10 +21,11 @@ from rl.rewards import (
     format_reward,
     length_reward,
     outcome_reward,
+    points_reward,
     thought_judge_reward,
 )
 from rl.trainers.base import BaseTrainer
-from rl.utils import extract_tag, parse_submit_deal, strip_thought
+from rl.utils import extract_tag, flip_deal_perspective, parse_submit_deal, strip_thought
 
 
 @dataclass
@@ -168,7 +169,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                 )
                 learner_messages.append({"role": "assistant", "content": response})
                 opponent_messages.append(
-                    {"role": "user", "content": strip_thought(response)}
+                    {"role": "user", "content": flip_deal_perspective(strip_thought(response))}
                 )
                 episode.learner_turns.append(len(learner_messages) - 1)
             else:
@@ -183,7 +184,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                 )
                 opponent_messages.append({"role": "assistant", "content": response})
                 learner_messages.append(
-                    {"role": "user", "content": strip_thought(response)}
+                    {"role": "user", "content": flip_deal_perspective(strip_thought(response))}
                 )
 
             action = extract_tag(response, "action")
@@ -394,6 +395,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                 format_reward,
                 arithmetic_reward,
                 outcome_reward,
+                points_reward,
             ],
             train_dataset=train_dataset,
             processing_class=self.tokenizer,

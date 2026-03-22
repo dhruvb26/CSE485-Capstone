@@ -23,7 +23,7 @@ judge:
 
 grpo:
   sft_checkpoint: checkpoints/sft-tuned
-  output_dir: checkpoints/grpo-selfplay
+  output_dir: checkpoints/grpo-selfplay-2
   prompt_split: 0.6
   num_generations: 8
   beta: 0.0
