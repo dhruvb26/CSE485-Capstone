@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import os
+import re
 import sys
 import yaml
 from pathlib import Path
@@ -227,16 +228,7 @@ def score_logs(storage_dir):
         except Exception:
             continue
 
-        # Parse model from filename
-        for suffix in (f"_{task}_200", f"_{task}_10"):
-            if stem.endswith(suffix):
-                rest = stem[:-len(suffix)]
-                break
-        else:
-            rest = stem
-        parts = rest.split("_", 1)
-        dataset = parts[0] if parts else ""
-        model = parts[1] if len(parts) > 1 else ""
+        dataset, model = _parse_dataset_model_from_stem(stem, task)
 
         results.append({
             "dataset": dataset,
@@ -264,11 +256,50 @@ def score_logs(storage_dir):
             print(f"    {r['task']:<45} {r['metric']:<22} {score_str}  (n={r['n']})")
 
 
+def _strip_optional_eval_suffixes(stem: str) -> str:
+    """Strip trailing tags from log stems (see eval.utils.get_output_path)."""
+    s = stem
+    # Order matches how suffixes are appended; strip from the right repeatedly.
+    tail_patterns = (
+        r"_prior_utts_\d+$",
+        r"_multishot_\d+$",
+        r"_cot$",
+        r"_partial_-?\d+$",
+    )
+    changed = True
+    while changed:
+        changed = False
+        for pat in tail_patterns:
+            new = re.sub(pat, "", s)
+            if new != s:
+                s = new
+                changed = True
+    return s
+
+
 def _parse_task(filename_stem, known_tasks):
+    """
+    Infer task from filename stem: {dataset}_{model}_{task}_{num}[_cot|...].json
+    Matches any positive instance count, not only 10 or 200.
+    """
+    base = _strip_optional_eval_suffixes(filename_stem)
     for task in sorted(known_tasks, key=len, reverse=True):
-        if filename_stem.endswith("_" + task + "_10") or filename_stem.endswith("_" + task + "_200"):
+        if re.match(r"^(.*)_" + re.escape(task) + r"_(\d+)$", base):
             return task
     return None
+
+
+def _parse_dataset_model_from_stem(filename_stem, task):
+    """Split stem into (dataset, model); model may contain underscores."""
+    base = _strip_optional_eval_suffixes(filename_stem)
+    m = re.match(r"^(.*)_" + re.escape(task) + r"_(\d+)$", base)
+    if not m:
+        return "", ""
+    prefix = m.group(1)
+    parts = prefix.split("_", 1)
+    dataset = parts[0] if parts else ""
+    model = parts[1] if len(parts) > 1 else ""
+    return dataset, model
 
 
 def _flatten_labels(x):
