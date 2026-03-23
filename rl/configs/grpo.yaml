@@ -22,8 +22,8 @@ judge:
   api_key_env: OPENROUTER_API_KEY
 
 grpo:
-  sft_checkpoint: checkpoints/sft-tuned
-  output_dir: checkpoints/grpo-selfplay-2
+  sft_checkpoint: checkpoints/grpo-selfplay-2/merged-final
+  output_dir: checkpoints/grpo-selfplay-3
   prompt_split: 0.6
   num_generations: 8
   beta: 0.0
