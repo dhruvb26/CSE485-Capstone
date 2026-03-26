@@ -115,7 +115,15 @@ async def run_generate(cfg: dict) -> None:
         logger.info("All {} rows completed successfully", len(ds))
 
 
+def _timestamp() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%m%d-%H%M")
+
+
 def run_sft(cfg: dict) -> None:
+    import trackio
+
     from rl.config import LoRAConfig, ModelConfig, SFTTrainerConfig
     from rl.trainers import AnnotatedSFTTrainer
 
@@ -123,15 +131,34 @@ def run_sft(cfg: dict) -> None:
     lora_cfg = LoRAConfig(**cfg.get("lora", {}))
     sft_params = {k: v for k, v in cfg.get("sft", {}).items()}
     sft_params["lora"] = lora_cfg
+    sft_config = SFTTrainerConfig(**sft_params)
 
-    AnnotatedSFTTrainer.run(
-        model_config=model_cfg,
-        sft_config=SFTTrainerConfig(**sft_params),
-        resume_from=cfg.get("resume_from"),
+    trackio.init(
+        project=f"sft-{_timestamp()}",
+        space_id="dhruvb26/capstone-trackio",
+        config={
+            "model": model_cfg.name,
+            "learning_rate": sft_config.learning_rate,
+            "epochs": sft_config.num_train_epochs,
+            "batch_size": sft_config.per_device_train_batch_size,
+            "gradient_accumulation_steps": sft_config.gradient_accumulation_steps,
+            "lora_r": lora_cfg.r,
+        },
     )
+
+    try:
+        AnnotatedSFTTrainer.run(
+            model_config=model_cfg,
+            sft_config=sft_config,
+            resume_from=cfg.get("resume_from"),
+        )
+    finally:
+        trackio.finish()
 
 
 def run_grpo(cfg: dict) -> None:
+    import trackio
+
     from rl.config import (
         GRPOTrainerConfig,
         JudgeConfig,
@@ -149,22 +176,41 @@ def run_grpo(cfg: dict) -> None:
     grpo_params["lora"] = lora_cfg
     grpo_params["judge"] = judge_cfg
 
-    if mode == "self_play":
-        SelfPlayGRPOTrainer.run(
-            model_config=model_cfg,
-            config=SelfPlayConfig(**grpo_params),
-            resume_from=cfg.get("resume_from"),
-        )
-    elif mode == "annotated":
-        AnnotatedGRPOTrainer.run(
-            model_config=model_cfg,
-            grpo_config=GRPOTrainerConfig(**grpo_params),
-            resume_from=cfg.get("resume_from"),
-        )
-    else:
-        raise ValueError(
-            f"Unknown grpo mode: {mode!r} (expected 'self_play' or 'annotated')"
-        )
+    trackio.init(
+        project=f"grpo-{mode}-{_timestamp()}",
+        space_id="dhruvb26/capstone-trackio",
+        config={
+            "model": model_cfg.name,
+            "mode": mode,
+            "learning_rate": grpo_params.get("learning_rate"),
+            "batch_size": grpo_params.get("per_device_train_batch_size"),
+            "gradient_accumulation_steps": grpo_params.get("gradient_accumulation_steps"),
+            "num_generations": grpo_params.get("num_generations"),
+            "beta": grpo_params.get("beta"),
+            "loss_type": grpo_params.get("extra_kwargs", {}).get("loss_type"),
+            "lora_r": lora_cfg.r,
+        },
+    )
+
+    try:
+        if mode == "self_play":
+            SelfPlayGRPOTrainer.run(
+                model_config=model_cfg,
+                config=SelfPlayConfig(**grpo_params),
+                resume_from=cfg.get("resume_from"),
+            )
+        elif mode == "annotated":
+            AnnotatedGRPOTrainer.run(
+                model_config=model_cfg,
+                grpo_config=GRPOTrainerConfig(**grpo_params),
+                resume_from=cfg.get("resume_from"),
+            )
+        else:
+            raise ValueError(
+                f"Unknown grpo mode: {mode!r} (expected 'self_play' or 'annotated')"
+            )
+    finally:
+        trackio.finish()
 
 
 def main() -> None:
