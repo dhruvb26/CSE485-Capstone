@@ -11,6 +11,8 @@ import torch
 from datasets import Dataset
 from loguru import logger
 from tqdm import tqdm
+from peft import PeftModel
+from transformers import AutoModelForCausalLM
 from trl import GRPOConfig, GRPOTrainer
 
 from rl.config import ModelConfig, SelfPlayConfig
@@ -72,6 +74,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
     def __init__(self, model_config: ModelConfig, config: SelfPlayConfig):
         super().__init__(model_config)
         self.self_play_config = config
+        self.opponent_model: AutoModelForCausalLM | None = None
 
     def load_model(self):
         super().load_model()
@@ -80,7 +83,53 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         if sft_checkpoint and os.path.isdir(sft_checkpoint):
             self.load_checkpoint(sft_checkpoint)
 
+        self._load_opponent_model()
+
         return self.model, self.tokenizer
+
+    def _load_opponent_model(self) -> None:
+        """Load a separate frozen copy of the model to act as the opponent.
+
+        Uses ``opponent_checkpoint`` if set, otherwise falls back to
+        ``sft_checkpoint``.  Handles both full-model checkpoints and LoRA
+        adapter checkpoints (detected via ``adapter_config.json``).
+        The opponent is kept in eval mode and is never updated during training.
+        """
+        cfg = self.self_play_config
+        opponent_path = cfg.opponent_checkpoint or cfg.sft_checkpoint
+
+        if opponent_path and os.path.isdir(opponent_path):
+            adapter_config = os.path.join(opponent_path, "adapter_config.json")
+
+            if os.path.exists(adapter_config):
+                logger.info(
+                    f"Loading frozen opponent: base model + LoRA adapter from {opponent_path}"
+                )
+                opponent = AutoModelForCausalLM.from_pretrained(
+                    self.model_config.name,
+                    dtype=self.model_config.dtype,
+                    device_map="auto",
+                )
+                opponent = PeftModel.from_pretrained(opponent, opponent_path)
+                opponent = opponent.merge_and_unload()
+            else:
+                logger.info(f"Loading frozen opponent model from {opponent_path}")
+                opponent = AutoModelForCausalLM.from_pretrained(
+                    opponent_path,
+                    dtype=self.model_config.dtype,
+                    device_map="auto",
+                )
+        else:
+            logger.info("No opponent checkpoint found — cloning learner weights")
+            import copy
+            opponent = copy.deepcopy(self.model)
+
+        opponent.eval()
+        for param in opponent.parameters():
+            param.requires_grad = False
+
+        self.opponent_model = opponent
+        logger.info("Frozen opponent model ready")
 
     @torch.no_grad()
     def _generate_turn(
@@ -89,14 +138,16 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         temperature: float = 0.7,
         top_p: float = 0.9,
         max_new_tokens: int = 512,
+        model: AutoModelForCausalLM | None = None,
     ) -> str:
+        model = model or self.model
         prompt_text = self.tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
         )
-        inputs = self.tokenizer(prompt_text, return_tensors="pt").to(self.model.device)
-        outputs = self.model.generate(
+        inputs = self.tokenizer(prompt_text, return_tensors="pt").to(model.device)
+        outputs = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
             temperature=temperature,
@@ -113,7 +164,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         agent_ids: list[str],
         persona: str,
     ) -> Episode:
-        """Play a single negotiation episode with the same model on both sides.
+        """Play a negotiation episode: learner (self.model) vs frozen opponent.
 
         Args:
             participant_info: Scenario metadata with each agent's priorities.
@@ -166,6 +217,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                     learner_messages,
                     cfg.temperature,
                     cfg.top_p,
+                    model=self.model,
                 )
                 learner_messages.append({"role": "assistant", "content": response})
                 opponent_messages.append(
@@ -181,6 +233,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                     opponent_messages,
                     cfg.temperature,
                     cfg.top_p,
+                    model=self.opponent_model,
                 )
                 opponent_messages.append({"role": "assistant", "content": response})
                 learner_messages.append(

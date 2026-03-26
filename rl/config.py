@@ -72,6 +72,7 @@ class JudgeConfig:
 class SelfPlayConfig:
     sft_checkpoint: str
     csv_path: str
+    opponent_checkpoint: str = ""
     judge: JudgeConfig = field(default_factory=JudgeConfig)
     lora: LoRAConfig = field(default_factory=LoRAConfig)
     output_dir: str = "checkpoints/grpo-selfplay"

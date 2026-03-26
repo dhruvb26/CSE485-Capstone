@@ -1,17 +1,15 @@
-# mode: "self_play" or "annotated"
-#   - self_play: generates episodes via model self-play, then trains with GRPO
-#   - annotated: uses pre-annotated JSONL conversations as GRPO prompts
-
-mode: self_play
+mode: annotated
 
 model:
   name: Qwen/Qwen2.5-7B-Instruct
   dtype: bfloat16
 
+# dropout=0.0 for all RL stages — it adds unwanted variance to GRPO
+# advantage estimates across the 8 generations.
 lora:
   r: 16
   lora_alpha: 32
-  lora_dropout: 0.1
+  lora_dropout: 0.0
   bias: none
   target_modules: all-linear
   task_type: CAUSAL_LM
@@ -22,12 +20,12 @@ judge:
   api_key_env: OPENROUTER_API_KEY
 
 grpo:
-  sft_checkpoint: checkpoints/grpo-selfplay-2/merged-final
-  output_dir: checkpoints/grpo-selfplay-3
+  sft_checkpoint: checkpoints/sft-tuned
+  data_path: data/casino/train.jsonl
+  output_dir: checkpoints/grpo-annotated
   prompt_split: 0.6
   num_generations: 8
   beta: 0.0
-  num_online_iterations: 1
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 4
   learning_rate: 1.0e-6
@@ -38,17 +36,6 @@ grpo:
   bf16: true
   report_to: trackio
 
-  csv_path: data/casino/train.csv
-  num_episodes: 200
-  max_turns: 18
-  temperature: 0.7
-  top_p: 0.9
-  persona_weights:
-    uncompromising: 0.25
-    selfish: 0.25
-    anchoring: 0.25
-    cooperative: 0.25
-
   extra_kwargs:
     generation_batch_size: 8
     log_completions: true
@@ -56,7 +43,54 @@ grpo:
     scale_rewards: false
     max_completion_length: 512
 
-  # for annotated mode (uncomment and switch mode above to use)
-  # data_path: data/casino/train.jsonl
-
 # resume_from: null
+
+# Key differences from annotated GRPO:
+#   - beta: 0.04 (KL regularization, 0.02-0.04 range) to prevent
+#     unconstrained policy drift — annotated GRPO uses beta=0.0
+#   - opponent_checkpoint: loads a separate frozen model as the opponent,
+#     never updated during training. The learner trains against this
+#     static policy. Set to the annotated-GRPO output.
+#   - num_online_iterations: 1 to start — only add more once the opponent
+#     is frozen and beta is nonzero
+#   - Outcome-dominated rewards: in self-play, outcome_reward and
+#     points_reward should dominate over format/thought quality signals.
+#     Consider using reward_weights in GRPOConfig to scale them, e.g.:
+#       reward_weights: [1.0, 1.0, 1.0, 1.0, 2.5, 2.5]
+#     for [length, thought_judge, format, arithmetic, outcome, points]
+#
+# grpo:
+#   sft_checkpoint: checkpoints/grpo-annotated/merged-final
+#   opponent_checkpoint: checkpoints/grpo-annotated/merged-final
+#   output_dir: checkpoints/grpo-selfplay
+#   prompt_split: 0.6
+#   num_generations: 8
+#   beta: 0.04
+#   num_online_iterations: 1
+#   per_device_train_batch_size: 1
+#   gradient_accumulation_steps: 4
+#   learning_rate: 1.0e-6
+#   warmup_ratio: 0.1
+#   logging_steps: 10
+#   save_strategy: "no"
+#   gradient_checkpointing: true
+#   bf16: true
+#   report_to: trackio
+#
+#   csv_path: data/casino/train.csv
+#   num_episodes: 200
+#   max_turns: 18
+#   temperature: 0.7
+#   top_p: 0.9
+#   persona_weights:
+#     uncompromising: 0.25
+#     selfish: 0.25
+#     anchoring: 0.25
+#     cooperative: 0.25
+#
+#   extra_kwargs:
+#     generation_batch_size: 8
+#     log_completions: true
+#     loss_type: "dr_grpo"
+#     scale_rewards: false
+#     max_completion_length: 512

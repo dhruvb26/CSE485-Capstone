@@ -68,7 +68,7 @@ def _judge_call(client: OpenAI, *, system_prompt: str, user_content: str) -> str
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ],
-        temperature=1.0,
+        temperature=0.7,
     )
     return response.choices[0].message.content.strip()
 
@@ -78,8 +78,9 @@ def length_reward(completions, **kwargs) -> list[float]:
     Reward based on the total character length of the completion.
 
     Encourages moderately long responses. The reward scales linearly up to
-    500 characters (mapped to 1.0), penalises completions shorter than 50
-    characters, and decays for completions longer than 500 characters.
+    750 characters (mapped to 1.0), penalises completions shorter than 50
+    characters, and decays gently for completions longer than 750 characters
+    (divided by 1000 so detailed thoughts with arithmetic aren't penalised).
 
     Args:
         completions: List of completions from the model. Each completion is
@@ -98,10 +99,10 @@ def length_reward(completions, **kwargs) -> list[float]:
         n = len(text)
         if n < 50:
             rewards.append(-1.0)
-        elif n <= 500:
-            rewards.append(min(1.0, n / 500.0))
+        elif n <= 750:
+            rewards.append(min(1.0, n / 750.0))
         else:
-            rewards.append(max(-1.0, 1.0 - (n - 500) / 500.0))
+            rewards.append(max(-1.0, 1.0 - (n - 750) / 1000.0))
     return rewards
 
 
@@ -247,11 +248,11 @@ def outcome_reward(completions, **kwargs) -> list[float]:
     directly (instead of using episode-level outcome metadata from
     ``prepare_dataset``).
 
-    Rewards (reduced to complement ``points_reward`` which provides the
-    score-proportional signal):
-      - ``[ACCEPT_DEAL]``: ``0.5``
-      - ``[SUBMIT_DEAL]`` but not ``[ACCEPT_DEAL]``: ``0.2``
-      - ``[WALK_AWAY]``: ``-0.5``
+    Upweighted ~2.5x relative to other rewards since this is the only signal
+    capturing whether the negotiation actually succeeded:
+      - ``[ACCEPT_DEAL]``: ``1.25``
+      - ``[SUBMIT_DEAL]`` but not ``[ACCEPT_DEAL]``: ``0.5``
+      - ``[WALK_AWAY]``: ``-1.25``
       - ``[TALK]`` or any other action (or missing ``<action>`` tag): ``0.0``
 
     Args:
@@ -274,11 +275,11 @@ def outcome_reward(completions, **kwargs) -> list[float]:
             continue
 
         if re.search(r"\[ACCEPT_DEAL\]", action, re.IGNORECASE):
-            rewards.append(0.5)
+            rewards.append(1.25)
         elif re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
-            rewards.append(0.2)
+            rewards.append(0.5)
         elif re.search(r"\[WALK_AWAY\]", action, re.IGNORECASE):
-            rewards.append(-0.5)
+            rewards.append(-1.25)
         else:
             rewards.append(0.0)
 

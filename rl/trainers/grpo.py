@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import defaultdict
 
 from datasets import Dataset
 from loguru import logger
@@ -10,6 +11,50 @@ from trl import GRPOConfig, GRPOTrainer
 from rl.trainers.base import BaseTrainer
 from rl.config import GRPOTrainerConfig, ModelConfig
 from rl.rewards import arithmetic_reward, format_reward, length_reward, thought_judge_reward
+
+_turn_reward_buffer: dict[str, list[tuple[float, float]]] = defaultdict(list)
+
+
+def _wrap_reward_with_turn_tracking(reward_fn):
+    """Wrap a reward function to capture (normalised turn position, reward)."""
+    def wrapper(completions, **kwargs):
+        rewards = reward_fn(completions, **kwargs)
+        turn_indices = kwargs.get("turn_index", [])
+        total_turns_list = kwargs.get("total_turns", [])
+        name = reward_fn.__name__
+        for i, r in enumerate(rewards):
+            ti = turn_indices[i] if i < len(turn_indices) else 0
+            tt = total_turns_list[i] if i < len(total_turns_list) else 1
+            position = ti / max(tt - 1, 1)
+            _turn_reward_buffer[name].append((position, r))
+        return rewards
+    wrapper.__name__ = reward_fn.__name__
+    return wrapper
+
+
+class TurnTrackingGRPOTrainer(GRPOTrainer):
+    """GRPOTrainer that injects per-turn-position reward metrics into logs.
+
+    Early = first half of conversation turns (position < 0.5).
+    Late  = second half (position >= 0.5), where SUBMIT_DEAL decisions
+    happen and arithmetic correctness becomes critical.
+    """
+
+    def log(self, logs: dict[str, float]) -> None:
+        if _turn_reward_buffer:
+            all_positions: list[float] = []
+            for reward_name, entries in _turn_reward_buffer.items():
+                all_positions.extend(p for p, _ in entries)
+                early = [r for p, r in entries if p < 0.5]
+                late = [r for p, r in entries if p >= 0.5]
+                if early:
+                    logs[f"turn/{reward_name}/early_mean"] = sum(early) / len(early)
+                if late:
+                    logs[f"turn/{reward_name}/late_mean"] = sum(late) / len(late)
+            if all_positions:
+                logs["turn/mean_position"] = sum(all_positions) / len(all_positions)
+            _turn_reward_buffer.clear()
+        super().log(logs)
 
 
 class AnnotatedGRPOTrainer(BaseTrainer):
@@ -31,15 +76,11 @@ class AnnotatedGRPOTrainer(BaseTrainer):
     def prepare_dataset(self) -> Dataset:
         """Create GRPO prompts from annotated conversations.
 
-        Args:
-            None.
+        Each row includes ``turn_index`` (0-based assistant-turn position) and
+        ``total_turns`` so reward analytics can split early vs. late turns.
 
         Returns:
             A dataset with one ``prompt`` row per assistant turn after the split.
-
-        Raises:
-            ValueError: If no prompts can be generated from the JSONL file.
-            Exception: If the JSONL file cannot be read or parsed.
         """
         cfg = self.grpo_config
         prompts: list[dict] = []
@@ -56,15 +97,21 @@ class AnnotatedGRPOTrainer(BaseTrainer):
                     if not assistant_indices:
                         continue
 
+                    total_turns = len(assistant_indices)
                     system_prompt = messages[0]["content"] if messages else ""
-                    split_at = max(1, int(len(assistant_indices) * cfg.prompt_split))
-                    for assistant_index in assistant_indices[split_at:]:
+                    split_at = max(1, int(total_turns * cfg.prompt_split))
+
+                    for turn_pos, assistant_index in enumerate(
+                        assistant_indices[split_at:], start=split_at
+                    ):
                         prompt = messages[:assistant_index]
                         if not prompt or prompt[-1]["role"] != "user":
                             continue
                         prompts.append({
                             "prompt": prompt,
                             "system_prompt": system_prompt,
+                            "turn_index": turn_pos,
+                            "total_turns": total_turns,
                         })
         except Exception:
             logger.exception(
@@ -78,7 +125,7 @@ class AnnotatedGRPOTrainer(BaseTrainer):
         logger.info(f"Built {len(prompts)} GRPO prompts from {cfg.data_path}")
         return Dataset.from_list(prompts)
 
-    def build_trainer(self, train_dataset: Dataset) -> GRPOTrainer:
+    def build_trainer(self, train_dataset: Dataset) -> TurnTrackingGRPOTrainer:
         cfg = self.grpo_config
         self._patch_chat_template()
 
@@ -102,10 +149,15 @@ class AnnotatedGRPOTrainer(BaseTrainer):
 
         os.makedirs(training_args.output_dir, exist_ok=True)
 
-        return GRPOTrainer(
+        reward_funcs = [
+            _wrap_reward_with_turn_tracking(fn)
+            for fn in [length_reward, thought_judge_reward, format_reward, arithmetic_reward]
+        ]
+
+        return TurnTrackingGRPOTrainer(
             model=self.model,
             args=training_args,
-            reward_funcs=[length_reward, thought_judge_reward, format_reward, arithmetic_reward],
+            reward_funcs=reward_funcs,
             train_dataset=train_dataset,
             processing_class=self.tokenizer,
             peft_config=peft_config,
