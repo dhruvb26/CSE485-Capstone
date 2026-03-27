@@ -7,6 +7,7 @@ from datasets import Dataset
 from loguru import logger
 from trl import SFTConfig, SFTTrainer
 
+from rl.callbacks import TrackioLoggingCallback
 from rl.trainers.base import BaseTrainer
 from rl.config import ModelConfig, SFTTrainerConfig
 
@@ -71,6 +72,7 @@ class AnnotatedSFTTrainer(BaseTrainer):
             train_dataset=train_dataset,
             processing_class=self.tokenizer,
             peft_config=peft_config,
+            callbacks=[TrackioLoggingCallback()],
         )
 
     @classmethod

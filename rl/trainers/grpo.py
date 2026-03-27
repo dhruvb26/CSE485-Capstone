@@ -8,6 +8,7 @@ from datasets import Dataset
 from loguru import logger
 from trl import GRPOConfig, GRPOTrainer
 
+from rl.callbacks import TrackioLoggingCallback
 from rl.trainers.base import BaseTrainer
 from rl.config import GRPOTrainerConfig, ModelConfig
 from rl.rewards import arithmetic_reward, configure_judge, format_reward, length_reward, thought_judge_reward
@@ -134,6 +135,7 @@ class AnnotatedGRPOTrainer(BaseTrainer):
             num_generations=cfg.num_generations,
             beta=cfg.beta,
             num_train_epochs=cfg.num_train_epochs,
+            max_steps=cfg.max_steps,
             per_device_train_batch_size=cfg.per_device_train_batch_size,
             gradient_accumulation_steps=cfg.gradient_accumulation_steps,
             learning_rate=cfg.learning_rate,
@@ -163,6 +165,7 @@ class AnnotatedGRPOTrainer(BaseTrainer):
             train_dataset=train_dataset,
             processing_class=self.tokenizer,
             peft_config=peft_config,
+            callbacks=[TrackioLoggingCallback()],
         )
 
     @classmethod

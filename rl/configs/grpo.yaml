@@ -22,6 +22,7 @@ judge:
 grpo:
   sft_checkpoint: checkpoints/sft-tuned
   data_path: data/casino/train.jsonl
+  max_steps: 1000
   output_dir: checkpoints/grpo-annotated
   prompt_split: 0.6
   num_generations: 8

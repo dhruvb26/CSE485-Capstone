@@ -15,6 +15,7 @@ from peft import PeftModel
 from transformers import AutoModelForCausalLM
 from trl import GRPOConfig, GRPOTrainer
 
+from rl.callbacks import TrackioLoggingCallback
 from rl.config import ModelConfig, SelfPlayConfig
 from rl.prompts import build_system_prompt
 from rl.rewards import (
@@ -453,6 +454,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
             train_dataset=train_dataset,
             processing_class=self.tokenizer,
             peft_config=peft_config,
+            callbacks=[TrackioLoggingCallback()],
         )
 
     def train(self, resume_from: str | None = None) -> None:

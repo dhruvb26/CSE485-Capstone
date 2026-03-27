@@ -57,6 +57,7 @@ class GRPOTrainerConfig:
     logging_steps: int = 5
     save_strategy: str = "epoch"
     save_steps: int = 200
+    max_steps: int = -1
     save_total_limit: int | None = None
     gradient_checkpointing: bool = True
     bf16: bool = True

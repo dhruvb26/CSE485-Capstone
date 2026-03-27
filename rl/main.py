@@ -134,7 +134,8 @@ def run_sft(cfg: dict) -> None:
     sft_config = SFTTrainerConfig(**sft_params)
 
     trackio.init(
-        project=f"sft-{_timestamp()}",
+        project="negotiation-agent",
+        name=f"sft-{_timestamp()}",
         space_id="dhruvb26/negotiation-agent",
         config={
             "model": model_cfg.name,
@@ -177,7 +178,8 @@ def run_grpo(cfg: dict) -> None:
     grpo_params["judge"] = judge_cfg
 
     trackio.init(
-        project=f"grpo-{mode}-{_timestamp()}",
+        project="negotiation-agent",
+        name=f"grpo-{mode}-{_timestamp()}",
         space_id="dhruvb26/negotiation-agent",
         config={
             "model": model_cfg.name,
