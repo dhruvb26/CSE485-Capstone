@@ -135,7 +135,7 @@ def run_sft(cfg: dict) -> None:
 
     trackio.init(
         project=f"sft-{_timestamp()}",
-        space_id="dhruvb26/negotiation-rl",
+        space_id="dhruvb26/negotiation-agent",
         config={
             "model": model_cfg.name,
             "learning_rate": sft_config.learning_rate,
@@ -178,7 +178,7 @@ def run_grpo(cfg: dict) -> None:
 
     trackio.init(
         project=f"grpo-{mode}-{_timestamp()}",
-        space_id="dhruvb26/negotiation-rl",
+        space_id="dhruvb26/negotiation-agent",
         config={
             "model": model_cfg.name,
             "mode": mode,

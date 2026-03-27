@@ -40,7 +40,7 @@ class TurnTrackingGRPOTrainer(GRPOTrainer):
     happen and arithmetic correctness becomes critical.
     """
 
-    def log(self, logs: dict[str, float]) -> None:
+    def log(self, logs: dict[str, float], *args, **kwargs) -> None:
         if _turn_reward_buffer:
             all_positions: list[float] = []
             for reward_name, entries in _turn_reward_buffer.items():
@@ -54,7 +54,7 @@ class TurnTrackingGRPOTrainer(GRPOTrainer):
             if all_positions:
                 logs["turn/mean_position"] = sum(all_positions) / len(all_positions)
             _turn_reward_buffer.clear()
-        super().log(logs)
+        super().log(logs, *args, **kwargs)
 
 
 class AnnotatedGRPOTrainer(BaseTrainer):
