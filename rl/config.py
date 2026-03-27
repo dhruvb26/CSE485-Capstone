@@ -44,6 +44,7 @@ class GRPOTrainerConfig:
     sft_checkpoint: str
     data_path: str
     lora: LoRAConfig = field(default_factory=LoRAConfig)
+    judge: "JudgeConfig" = field(default_factory=lambda: JudgeConfig())
     output_dir: str = "checkpoints/grpo"
     prompt_split: float = 0.5
     num_generations: int = 8

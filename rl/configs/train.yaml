@@ -23,6 +23,6 @@ sft:
   assistant_only_loss: true
   gradient_checkpointing: true
   bf16: true
-  report_to: trackio
+  report_to: none
 
 # resume_from: null

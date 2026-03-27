@@ -10,7 +10,7 @@ from trl import GRPOConfig, GRPOTrainer
 
 from rl.trainers.base import BaseTrainer
 from rl.config import GRPOTrainerConfig, ModelConfig
-from rl.rewards import arithmetic_reward, format_reward, length_reward, thought_judge_reward
+from rl.rewards import arithmetic_reward, configure_judge, format_reward, length_reward, thought_judge_reward
 
 _turn_reward_buffer: dict[str, list[tuple[float, float]]] = defaultdict(list)
 
@@ -170,5 +170,10 @@ class AnnotatedGRPOTrainer(BaseTrainer):
         grpo_config: GRPOTrainerConfig,
         resume_from: str | None = None,
     ) -> None:
+        configure_judge(
+            model=grpo_config.judge.model,
+            base_url=grpo_config.judge.base_url,
+            api_key_env=grpo_config.judge.api_key_env,
+        )
         trainer = cls(model_config, grpo_config)
         trainer.train(resume_from=resume_from)

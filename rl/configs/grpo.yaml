@@ -34,7 +34,7 @@ grpo:
   save_strategy: "no"
   gradient_checkpointing: true
   bf16: true
-  report_to: trackio
+  report_to: none
 
   extra_kwargs:
     generation_batch_size: 8
