@@ -140,6 +140,8 @@ class AnnotatedGRPOTrainer(BaseTrainer):
             warmup_ratio=cfg.warmup_ratio,
             logging_steps=cfg.logging_steps,
             save_strategy=cfg.save_strategy,
+            save_steps=cfg.save_steps,
+            save_total_limit=cfg.save_total_limit,
             gradient_checkpointing=cfg.gradient_checkpointing,
             bf16=cfg.bf16,
             report_to=cfg.report_to,

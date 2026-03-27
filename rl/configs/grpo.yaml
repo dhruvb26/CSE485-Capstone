@@ -31,7 +31,9 @@ grpo:
   learning_rate: 1.0e-6
   warmup_ratio: 0.1
   logging_steps: 10
-  save_strategy: "no"
+  save_strategy: "steps"
+  save_steps: 200
+  save_total_limit: 2
   gradient_checkpointing: true
   bf16: true
   report_to: none
@@ -43,7 +45,8 @@ grpo:
     scale_rewards: false
     max_completion_length: 512
 
-# resume_from: null
+# Uncomment to resume from last checkpoint if the job gets killed:
+# resume_from: latest
 
 # Key differences from annotated GRPO:
 #   - beta: 0.04 (KL regularization, 0.02-0.04 range) to prevent

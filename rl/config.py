@@ -56,6 +56,8 @@ class GRPOTrainerConfig:
     warmup_ratio: float = 0.1
     logging_steps: int = 5
     save_strategy: str = "epoch"
+    save_steps: int = 200
+    save_total_limit: int | None = None
     gradient_checkpointing: bool = True
     bf16: bool = True
     report_to: str = "trackio"
