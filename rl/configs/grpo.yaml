@@ -50,7 +50,6 @@ grpo:
   checkpoint: checkpoints/grpo-annotated-2
   opponent_checkpoint: checkpoints/grpo-annotated-2
   output_dir: checkpoints/grpo-selfplay
-  max_steps: 100
   prompt_split: 0.6
   num_generations: 8
   beta: 0.04
@@ -66,6 +65,7 @@ grpo:
   gradient_checkpointing: true
   bf16: true
   report_to: none
+  max_steps: 100
 
   csv_path: data/casino/train.csv
   num_episodes: 200
