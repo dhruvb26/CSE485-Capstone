@@ -20,10 +20,10 @@ judge:
   api_key_env: OPENROUTER_API_KEY
 
 grpo:
-  sft_checkpoint: checkpoints/sft-tuned
+  sft_checkpoint: checkpoints/sft-tuned-2
   data_path: data/casino/train.jsonl
   max_steps: 1000
-  output_dir: checkpoints/grpo-annotated
+  output_dir: checkpoints/grpo-annotated-2
   prompt_split: 0.6
   num_generations: 8
   beta: 0.0
@@ -46,7 +46,6 @@ grpo:
     scale_rewards: false
     max_completion_length: 512
 
-# Uncomment to resume from last checkpoint if the job gets killed:
 # resume_from: latest
 
 # Key differences from annotated GRPO:
