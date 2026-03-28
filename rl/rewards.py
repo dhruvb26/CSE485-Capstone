@@ -24,6 +24,18 @@ _judge_client: OpenAI | None = None
 _judge_model: str = ""
 
 
+class EmptyResponseError(APIError):
+    """OpenRouter returned a response with no choices."""
+
+    def __init__(self) -> None:
+        # APIError requires message, body, and request; fake a minimal one.
+        super().__init__(
+            message="OpenRouter returned choices=None",
+            request=None,  # type: ignore[arg-type]
+            body=None,
+        )
+
+
 def configure_judge(
     *,
     model: str,
@@ -58,7 +70,9 @@ def configure_judge(
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(min=1, max=10),
-    retry=retry_if_exception_type((APIError, APITimeoutError, RateLimitError)),
+    retry=retry_if_exception_type(
+        (APIError, APITimeoutError, RateLimitError, EmptyResponseError)
+    ),
     reraise=True,
 )
 def _judge_call(client: OpenAI, *, system_prompt: str, user_content: str) -> str:
@@ -68,9 +82,14 @@ def _judge_call(client: OpenAI, *, system_prompt: str, user_content: str) -> str
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ],
-        temperature=0.7,
+        temperature=0.4,
     )
-    return response.choices[0].message.content.strip()
+    if not response.choices:
+        raise EmptyResponseError()
+    content = response.choices[0].message.content
+    if content is None:
+        raise EmptyResponseError()
+    return content.strip()
 
 
 def length_reward(completions, **kwargs) -> list[float]:
