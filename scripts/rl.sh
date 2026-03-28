@@ -15,13 +15,13 @@ set -euo pipefail
 
 TASK="${1:-}"
 
-if [[ -z "$TASK" ]] || [[ "$TASK" != "generate" && "$TASK" != "train" && "$TASK" != "grpo" && "$TASK" != "pipeline" && "$TASK" != "all" ]]; then
-    echo "Usage: sbatch $0 {generate|train|grpo|train+grpo|all}"
+if [[ -z "$TASK" ]] || [[ "$TASK" != "generate" && "$TASK" != "sft" && "$TASK" != "grpo" && "$TASK" != "pipeline" && "$TASK" != "all" ]]; then
+    echo "Usage: sbatch $0 {generate|sft|grpo|pipeline|all}"
     echo "  generate   — call OpenAI-compatible API to produce annotated SFT data"
-    echo "  train      — run SFT training with LoRA"
+    echo "  sft        — run SFT training with LoRA"
     echo "  grpo       — run GRPO training (annotated or self-play, set in grpo.yaml)"
     echo "  pipeline   — run SFT training, then GRPO"
-    echo "  all        — run generate, then train, then grpo"
+    echo "  all        — run generate, then sft, then grpo"
     exit 1
 fi
 
@@ -45,8 +45,8 @@ run_generate() {
     $PYTHON -m rl.main generate
 }
 
-run_train() {
-    $PYTHON -m rl.main train
+run_sft() {
+    $PYTHON -m rl.main sft
 }
 
 run_grpo() {
@@ -55,17 +55,17 @@ run_grpo() {
 
 if [[ "$TASK" == "all" ]]; then
     run_generate
-    run_train
+    run_sft
     run_grpo
 elif [[ "$TASK" == "pipeline" ]]; then
-    run_train
+    run_sft
     run_grpo
 elif [[ "$TASK" == "generate" ]]; then
     run_generate
 elif [[ "$TASK" == "grpo" ]]; then
     run_grpo
 else
-    run_train
+    run_sft
 fi
 
 echo "Job $SLURM_JOB_ID completed."

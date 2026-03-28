@@ -218,7 +218,7 @@ def run_grpo(cfg: dict) -> None:
 def main() -> None:
     commands = {
         "generate": run_generate,
-        "train": run_sft,
+        "sft": run_sft,
         "grpo": run_grpo,
     }
 

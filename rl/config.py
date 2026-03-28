@@ -41,7 +41,7 @@ class SFTTrainerConfig:
 
 @dataclass
 class GRPOTrainerConfig:
-    sft_checkpoint: str
+    checkpoint: str
     data_path: str
     lora: LoRAConfig = field(default_factory=LoRAConfig)
     judge: "JudgeConfig" = field(default_factory=lambda: JudgeConfig())
@@ -74,7 +74,7 @@ class JudgeConfig:
 
 @dataclass
 class SelfPlayConfig:
-    sft_checkpoint: str
+    checkpoint: str
     csv_path: str
     opponent_checkpoint: str = ""
     judge: JudgeConfig = field(default_factory=JudgeConfig)

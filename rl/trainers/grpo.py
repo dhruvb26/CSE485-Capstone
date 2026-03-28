@@ -68,9 +68,9 @@ class AnnotatedGRPOTrainer(BaseTrainer):
     def load_model(self):
         super().load_model()
 
-        sft_checkpoint = self.grpo_config.sft_checkpoint
-        if sft_checkpoint and os.path.isdir(sft_checkpoint):
-            self.load_checkpoint(sft_checkpoint)
+        checkpoint = self.grpo_config.checkpoint
+        if checkpoint and os.path.isdir(checkpoint):
+            self.load_checkpoint(checkpoint)
 
         return self.model, self.tokenizer
 

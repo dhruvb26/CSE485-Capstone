@@ -80,9 +80,9 @@ class SelfPlayGRPOTrainer(BaseTrainer):
     def load_model(self):
         super().load_model()
 
-        sft_checkpoint = self.self_play_config.sft_checkpoint
-        if sft_checkpoint and os.path.isdir(sft_checkpoint):
-            self.load_checkpoint(sft_checkpoint)
+        checkpoint = self.self_play_config.checkpoint
+        if checkpoint and os.path.isdir(checkpoint):
+            self.load_checkpoint(checkpoint)
 
         self._load_opponent_model()
 
@@ -92,12 +92,12 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         """Load a separate frozen copy of the model to act as the opponent.
 
         Uses ``opponent_checkpoint`` if set, otherwise falls back to
-        ``sft_checkpoint``.  Handles both full-model checkpoints and LoRA
+        ``checkpoint``.  Handles both full-model checkpoints and LoRA
         adapter checkpoints (detected via ``adapter_config.json``).
         The opponent is kept in eval mode and is never updated during training.
         """
         cfg = self.self_play_config
-        opponent_path = cfg.opponent_checkpoint or cfg.sft_checkpoint
+        opponent_path = cfg.opponent_checkpoint or cfg.checkpoint
 
         if opponent_path and os.path.isdir(opponent_path):
             adapter_config = os.path.join(opponent_path, "adapter_config.json")
