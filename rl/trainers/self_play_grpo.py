@@ -437,6 +437,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
             gradient_checkpointing=cfg.gradient_checkpointing,
             bf16=cfg.bf16,
             report_to=cfg.report_to,
+            reward_weights=[0.5, 1.0, 0.5, 0.5, 2.0, 2.0],
             **cfg.extra_kwargs,
         )
         peft_config = self._build_peft_config(cfg.lora)

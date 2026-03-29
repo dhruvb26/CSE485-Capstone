@@ -321,7 +321,7 @@ def arithmetic_reward(completions, **kwargs) -> list[float]:
        is skipped.
 
     Completions without a ``[SUBMIT_DEAL]`` action receive a neutral 0.5.
-    Malformed or inconsistent deals receive 0.0.
+    Malformed or inconsistent deals receive -0.5.
 
     Args:
         completions: List of completions from the model. Each completion is
@@ -331,7 +331,7 @@ def arithmetic_reward(completions, **kwargs) -> list[float]:
 
     Returns:
         A list of float rewards, one per completion. 1.0 for valid and
-        consistent deals, 0.0 for invalid/inconsistent deals, 0.5 for
+        consistent deals, -0.5 for invalid/inconsistent deals, 0.5 for
         non-deal actions.
     """
     prompts = kwargs.get("prompts", [])
@@ -350,17 +350,17 @@ def arithmetic_reward(completions, **kwargs) -> list[float]:
 
         deal = parse_submit_deal(action)
         if deal is None:
-            rewards.append(0.0)
+            rewards.append(-0.5)
             continue
 
         if not all(0 <= v <= 3 for v in deal.values()):
-            rewards.append(0.0)
+            rewards.append(-0.5)
             continue
 
         prompt = prompts[i] if i < len(prompts) else ""
         discussed = extract_discussed_deal(prompt)
         if discussed is not None and discussed != deal:
-            rewards.append(0.0)
+            rewards.append(-0.5)
             continue
 
         rewards.append(1.0)
@@ -382,7 +382,7 @@ def points_reward(completions, **kwargs) -> list[float]:
     during episode generation).  The raw score is normalised to [0, 1] by
     dividing by ``max_points`` (36).
 
-    Non-deal actions receive 0.0; ``[WALK_AWAY]`` receives -0.5.
+    Non-deal actions receive 0.0; ``[WALK_AWAY]`` receives -1.0.
 
     Args:
         completions: List of completions from the model.
@@ -422,7 +422,7 @@ def points_reward(completions, **kwargs) -> list[float]:
                 rewards.append(0.0)
                 continue
             score = deal["food"] * fp + deal["water"] * wp + deal["firewood"] * fwp
-            rewards.append(score / mp)
+            rewards.append((score / mp) * 2.0 - 0.5)
 
         elif re.search(r"\[ACCEPT_DEAL\]", action, re.IGNORECASE):
             raw = opponent_offers[i] if i < len(opponent_offers) else "null"
@@ -435,10 +435,10 @@ def points_reward(completions, **kwargs) -> list[float]:
                 + alloc["water"] * wp
                 + alloc["firewood"] * fwp
             )
-            rewards.append(score / mp)
+            rewards.append((score / mp) * 2.0 - 0.5)
 
         elif re.search(r"\[WALK_AWAY\]", action, re.IGNORECASE):
-            rewards.append(-0.5)
+            rewards.append(-1.0)
         else:
             rewards.append(0.0)
 

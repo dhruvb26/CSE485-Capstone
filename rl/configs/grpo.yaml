@@ -1,4 +1,4 @@
-mode: self-play
+mode: self_play
 
 model:
   name: Qwen/Qwen2.5-7B-Instruct
@@ -65,10 +65,8 @@ grpo:
   gradient_checkpointing: true
   bf16: true
   report_to: none
-  max_steps: 100
-
   csv_path: data/casino/train.csv
-  num_episodes: 200
+  num_episodes: 400
   max_turns: 18
   temperature: 0.7
   top_p: 0.9
