@@ -81,7 +81,7 @@ class DNDRegAllSlotsHandler(DNDAllSlotsHandler):
 
         # get the instances and dialogues from the dataset
         instances = dataset_handler.get_propose_and_extra_utterances()
-        instances = [instance for instance in instances if instance["metadata"]["intent"] == "propose"]
+        instances = [instance for instance in instances if instance["metadata"]["intent"] == "propose" and instance["metadata"].get("proposal") is not None]
 
         prompt_template = self.get_prompt_template(dataset_handler, "reg", model_handler)
 
