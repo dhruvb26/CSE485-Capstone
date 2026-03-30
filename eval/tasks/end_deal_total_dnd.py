@@ -35,7 +35,7 @@ class DNDDealPointsHandler(KBaseTaskHandler):
             deal_lst: a list with strings describing the deal achieved by the agents.
         """
 
-        if deal_lst[0] == "<disagree>" or deal_lst[0] == "<no_agreement>":
+        if deal_lst[0] in ("<disagree>", "<no_agreement>", "<disconnect>"):
             new_lst = [0, 0, 0]
         else:
             new_lst = []

@@ -91,7 +91,7 @@ class A1BCHandler(CHandlerDND):
         """
         ground_truth = []
         for instance in instances:
-            if "no_agreement" in instance["output"]:
+            if "no_agreement" in instance["output"] or "disconnect" in instance["output"]:
                 # just fill with NA
                 gt = {
                     "books": "NA",
