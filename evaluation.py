@@ -6,6 +6,7 @@ from typing import Dict
 import subprocess
 import time
 from datetime import datetime
+import requests
 
 from agents import BuyerAgent, SellerAgent
 from clients import LocalChat, OpenAIChat
@@ -43,41 +44,96 @@ QWEN_INSTRUCT = {'name': 'qwen_instruct',
 QWEN_INSTRUCT_RL = {'name': 'qwen_instruct_rl', 
                     'path': '/scratch/bbreisc1/bbreisc1/grpo_qwen_checkpoint247', 
                     'cache_dir': '/scratch/bbreisc1/bbreisc1/cahce/qwen_instruct_rl'}
+LLAMA_CHAT = {'name': 'llama_chat', 
+                    'path': '/scratch/bbreisc1/bbreisc1/models/meta-llama__Llama-2-13b-chat-hf', 
+                    'cache_dir': '/scratch/bbreisc1/bbreisc1/cache/llama_chat'}
 
 RUNS = [
-    (QWEN_INSTRUCT, QWEN_INSTRUCT_RL),
-    (QWEN_INSTRUCT_RL, QWEN_INSTRUCT),
-    (QWEN_INSTRUCT_RL, MISTRAL_INSTRUCT),
-    (QWEN_INSTRUCT_RL, QWEN_CHAT),
-    (QWEN_INSTRUCT, MISTRAL_INSTRUCT),
-    (QWEN_INSTRUCT, QWEN_CHAT),
     (MISTRAL_INSTRUCT, QWEN_INSTRUCT_RL),
-    (QWEN_CHAT, QWEN_INSTRUCT_RL),
+    (LLAMA_CHAT, QWEN_INSTRUCT_RL),
     (MISTRAL_INSTRUCT, QWEN_INSTRUCT),
-    (QWEN_CHAT, QWEN_INSTRUCT)
+    (LLAMA_CHAT, QWEN_INSTRUCT)
     ]
+
+def debug_tokenize(base_url, model_path, messages):
+    r = requests.post(
+        f"{base_url}/tokenize",
+        headers={"Content-Type": "application/json"},
+        json={
+            "model": model_path,
+            "messages": messages,
+            "add_special_tokens": True
+        }
+    )
+    data = r.json()
+    # decode the tokens back to text so you can read it
+    r2 = requests.post(
+        f"{base_url}/detokenize",
+        headers={"Content-Type": "application/json"},
+        json={
+            "model": model_path,
+            "tokens": data["tokens"]
+        }
+    )
+    print(r2.json().get("prompt", "NO PROMPT"))
 
 def run_session(buyer_model: dict, seller_model: dict, product_limit: int, dataset_dir: str) -> Dict:
     SNPB = 0.00
     SNPS = 0.00
     DEALS = 0
-    
-    try:
+    RESTART_EVERY = 40
+
+    def start_servers():
         buyer_process = start_vllm_wait(model_path=buyer_model['path'], port=8000, cache_dir=buyer_model['cache_dir'], gpu_id=0)
         seller_process = start_vllm_wait(model_path=seller_model['path'], port=8003, cache_dir=seller_model['cache_dir'], gpu_id=1)
+        buyer_client = _get_client(buyer_model['path'], 'http://127.0.0.1:8000')
+        seller_client = _get_client(seller_model['path'], 'http://127.0.0.1:8003')
+        return buyer_process, seller_process, buyer_client, seller_client
+
+    def restart_servers(buyer_process, seller_process):
+        print("Restarting vLLM servers...")
+        stop_vllm(buyer_process)
+        stop_vllm(seller_process)
+        subprocess.run("pkill -f vllm", shell=True)
+        time.sleep(5)
+        return start_servers()
+
+    try:
+        buyer_process, seller_process, buyer_client, seller_client = start_servers()
+
+        debug_tokenize(
+            "http://127.0.0.1:8000",
+            buyer_model['path'],
+            [
+                {"role": "system", "content": "test system prompt"},
+                {"role": "user", "content": "test user message"},
+            ]
+        )
     except Exception as e:
         print(f'Error: error starting vllm servers: {e}')
         subprocess.run("pkill -f vllm", shell=True)
         time.sleep(3)
         return []
-    buyer_client = _get_client(buyer_model['path'], 'http://127.0.0.1:8000')
-    seller_client = _get_client(seller_model['path'], 'http://127.0.0.1:8003')
+
     history = []
     for i in range(product_limit):
+
+        # Periodic restart
+        if i > 0 and i % RESTART_EVERY == 0:
+            print(f"\n[{i}/{product_limit}] Scheduled restart...")
+            try:
+                buyer_process, seller_process, buyer_client, seller_client = restart_servers(buyer_process, seller_process)
+                print("Servers restarted successfully.\n")
+            except Exception as e:
+                print(f"Failed to restart servers: {e}")
+                subprocess.run("pkill -f vllm", shell=True)
+                break
+
         try:
             item = load_product(dataset_dir, product_index=i)
         except IndexError:
             break
+
         B = F * float(item["highest_price"])
         C = float(item["lowest_price"])
         inv_block = inventory_list(item)
@@ -110,34 +166,52 @@ def run_session(buyer_model: dict, seller_model: dict, product_limit: int, datas
         )
         outcome = res[0]
         dialog = res[1]
+        #print(json.dumps(dialog, indent=4, default=lambda o: o.__dict__))
         m = compute_metrics(outcome, B, C)
-        run = {'buyerPath': buyer_model['path'], 'buyerName': buyer_model['name'], 'sellerPath': seller_model['path'], 'sellerName': seller_model['name'], 'item': item, 'b': B, 'c': C, 'outcome': outcome, 'metrics': m}
+        run = {
+            'buyerPath': buyer_model['path'],
+            'buyerName': buyer_model['name'],
+            'sellerPath': seller_model['path'],
+            'sellerName': seller_model['name'],
+            'item': item,
+            'b': B,
+            'c': C,
+            'outcome': outcome,
+            'metrics': m
+        }
         history.append(run)
-        
+
         if outcome['deal']:
             DEALS += 1
         SNPB += m['NPb']
         SNPS += m['NPs']
 
+        print(f"[{i+1}/{product_limit}] Deal: {outcome['deal']} | Price: {outcome.get('price', 'N/A')} | DEALS so far: {DEALS}")
+
     stop_vllm(buyer_process)
     stop_vllm(seller_process)
-    session = {'buyer': buyer_model['path'], 'seller': seller_model['path'], 'deals': DEALS, 'deal_rate': DEALS/product_limit, 'SNPB': SNPB, 'SNPS': SNPS, 'history': history}
+    session = {
+        'buyer': buyer_model['path'],
+        'seller': seller_model['path'],
+        'deals': DEALS,
+        'deal_rate': DEALS / max(len(history), 1),
+        'SNPB': SNPB,
+        'SNPS': SNPS,
+        'history': history
+    }
     return session
-    
 
 
 if __name__ == "__main__":
-
     sessions = []
     for pair in RUNS:
         subprocess.run("pkill -f vllm", shell=True)
         time.sleep(5)
 
-        session = run_session(buyer_model=QWEN_INSTRUCT, seller_model=QWEN_INSTRUCT_RL, product_limit=279, dataset_dir=DATASET_PATH)
+        session = run_session(buyer_model=pair[0], seller_model=pair[1], product_limit=279, dataset_dir=DATASET_PATH)
         sessions.append(session)
-        print(f'-------------Buyer: {session['buyer']}\nSeller: {session['seller']}\nDeal Rate: {session['deal_rate']}\nSNPB: {session['SNPB']}\nSNPS: {session['SNPS']}----------')
-        
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"results_{timestamp}.json"
-    with open(filename, "w") as f:
-        json.dump(sessions, f, indent=4, default=lambda o: o.__dict__)
+        print(f'-------------Buyer: {session["buyer"]}\nSeller: {session["seller"]}\nDeal Rate: {session["deal_rate"]}\nSNPB: {session["SNPB"]}\nSNPS: {session["SNPS"]}----------')
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"results_{timestamp}_{pair[0]['name']}_{pair[1]['name']}.json"
+        with open(filename, "w") as f:
+            json.dump(session, f, indent=4, default=lambda o: o.__dict__)

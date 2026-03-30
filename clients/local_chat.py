@@ -32,7 +32,8 @@ class LocalChat:
                     ],
                     "max_tokens": 1024,
                     "temperature": temperature,
-                    "top_p": top_p
+                    "top_p": top_p,
+                    "echo": True
                 }
             r = requests.post(
                 f"{self.base_url}/chat/completions",
@@ -47,6 +48,10 @@ class LocalChat:
             data = r.json()
             #for input output extraction and debugging
             all_negotiation_log.append((json, data))
+            
+            #used for debugging
+            print(data.get("prompt", "NO PROMPT FIELD RETURNED"))
+
             return (data["choices"][0]["message"]["content"] or "").strip()
         except Exception as e:
             logger.info("Error sending query to LocalChat. Returning empty string.")
