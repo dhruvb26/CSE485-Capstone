@@ -1,7 +1,7 @@
 models:
   - type: local_model
-    # Text-only eval: VL Qwen3.5 checkpoints use Qwen3_5ForConditionalGeneration (see local_model.py).
     model_path: checkpoints/grpo-selfplay
+    base_model: Qwen/Qwen2.5-7B-Instruct
     trust_remote_code: true
     label: grpo-selfplay-0329
     max_new_tokens: 2048
