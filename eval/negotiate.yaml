@@ -1,0 +1,35 @@
+csv_path: data/casino/train.csv
+num_episodes: 200
+max_turns: 18
+temperature: 0.7
+top_p: 0.9
+seed: 42
+output_dir: logs/negotiate
+
+persona_weights:
+  uncompromising: 0.25
+  selfish: 0.25
+  anchoring: 0.25
+  cooperative: 0.25
+
+# Each matchup runs num_episodes with the specified learner vs opponent.
+# The A/B comparison: trained checkpoint as learner vs base Qwen as learner,
+# both playing against the same opponents.
+
+matchups:
+  - learner:
+      label: grpo-selfplay
+      model_path: checkpoints/grpo-selfplay
+      base_model: Qwen/Qwen2.5-7B-Instruct
+    opponent:
+      label: grpo-annotated
+      model_path: checkpoints/grpo-annotated-2
+      base_model: Qwen/Qwen2.5-7B-Instruct
+
+  - learner:
+      label: qwen-base
+      model_path: Qwen/Qwen2.5-7B-Instruct
+    opponent:
+      label: grpo-annotated
+      model_path: checkpoints/grpo-annotated-2
+      base_model: Qwen/Qwen2.5-7B-Instruct
