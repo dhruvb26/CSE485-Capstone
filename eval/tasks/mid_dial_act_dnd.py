@@ -29,7 +29,7 @@ class DASUHandler(WBaseTaskHandler):
         """
         prev_utterances = []
         for prev_turn in instance['events'][:turn_ix]:
-            if type(prev_turn['data']) != dict:
+            if isinstance(prev_turn['data'], str):
                 spk = "YOU: "
                 if prev_turn["agent"] == 1:
                     spk = "THEM: "
@@ -58,7 +58,7 @@ class DASUHandler(WBaseTaskHandler):
         ground_truth = []
         for instance in instances:
             for turn_ix, turn in enumerate(instance['events']):
-                if type(turn['data']) != dict:
+                if isinstance(turn['data'], str):
 
                     if self.args.num_prior_utts == 0:
                         prompt = prompt_template.replace("$utterance$", turn['data'])

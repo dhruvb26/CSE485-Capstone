@@ -733,7 +733,7 @@ class WBaseTaskHandler:
     def get_prompt_da_dnd(self, instance, template):
         dialogue = ""
         for i in range(len(instance['events'])):
-            if not isinstance(instance['events'][i]['data'], dict):
+            if isinstance(instance['events'][i]['data'], str):
                 if instance['events'][i]['agent'] == 0:
                     dialogue += "Agent 1: " + instance['events'][i]['data'] + "\n"
                 else:
