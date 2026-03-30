@@ -55,6 +55,22 @@ class KBaseTaskHandler:
                 new.append(element)
         return new
 
+    _ACTION_MAP = {
+        "Accept-Deal": "[ACCEPT_DEAL]",
+        "Reject-Deal": "[REJECT_DEAL]",
+        "Walk-Away": "[WALK_AWAY]",
+    }
+
+    @staticmethod
+    def _format_submit_deal(log, eval_agent):
+        """Convert a CaSiNo Submit-Deal log entry to the structured training format."""
+        td = log['task_data']
+        if log['id'] == eval_agent:
+            f, w, fw = td['issue2youget']['Food'], td['issue2youget']['Water'], td['issue2youget']['Firewood']
+        else:
+            f, w, fw = td['issue2theyget']['Food'], td['issue2theyget']['Water'], td['issue2theyget']['Firewood']
+        return f"[SUBMIT_DEAL] food:{f} water:{w} firewood:{fw}"
+
     def get_prompt_ca(self, instance, template, agent):
         dialogue = ""
         logs = instance['chat_logs']
@@ -63,7 +79,13 @@ class KBaseTaskHandler:
         history = logs[:]
         history2 = []
         for utt in history:
-            if utt['text'] not in ["Submit-Deal", "Accept-Deal", "Walk-Away", "Reject-Deal"]:
+            if utt['text'] == "Submit-Deal":
+                utt = dict(utt, text=self._format_submit_deal(utt, agent))
+                history2.append(utt)
+            elif utt['text'] in self._ACTION_MAP:
+                utt = dict(utt, text=self._ACTION_MAP[utt['text']])
+                history2.append(utt)
+            else:
                 history2.append(utt)
 
         if self.args.num_utts_partial_dial != -1:
@@ -596,19 +618,52 @@ class WBaseTaskHandler:
     def evaluate(self, dataset_handler, model_handler, return_prompt_gt=False):
         raise NotImplementedError
 
+    _ACTION_MAP = {
+        "Accept-Deal": "[ACCEPT_DEAL]",
+        "Reject-Deal": "[REJECT_DEAL]",
+        "Walk-Away": "[WALK_AWAY]",
+    }
+
+    @staticmethod
+    def _format_submit_deal(log, eval_agent):
+        """Convert a CaSiNo Submit-Deal log entry to the structured training format.
+
+        Values always represent the *eval_agent*'s allocation, matching the
+        self-play convention where ``[SUBMIT_DEAL]`` values shown to a player
+        are always that player's own allocation.
+        """
+        td = log['task_data']
+        if log['id'] == eval_agent:
+            f, w, fw = td['issue2youget']['Food'], td['issue2youget']['Water'], td['issue2youget']['Firewood']
+        else:
+            f, w, fw = td['issue2theyget']['Food'], td['issue2theyget']['Water'], td['issue2theyget']['Firewood']
+        return f"[SUBMIT_DEAL] food:{f} water:{w} firewood:{fw}"
+
+    def _build_ca_dialogue(self, logs, eval_agent, limit=None):
+        """Build a dialogue string from CaSiNo chat logs with structured deal actions."""
+        entries = []
+        for log in logs:
+            if log['text'] == "Submit-Deal":
+                action = self._format_submit_deal(log, eval_agent)
+                entries.append(log['id'] + ": " + action + "\n")
+            elif log['text'] in self._ACTION_MAP:
+                entries.append(log['id'] + ": " + self._ACTION_MAP[log['text']] + "\n")
+            else:
+                entries.append(log['id'] + ": " + log['text'] + "\n")
+
+        if limit is not None:
+            entries = entries[:limit]
+
+        dialogue = "".join(entries)
+        dialogue = dialogue.replace("mturk_agent_1:", "YOU:")
+        dialogue = dialogue.replace("mturk_agent_2:", "THEM:")
+        return dialogue
+
     def get_prompt_ca(self, instance, template, agent):
-        dialogue = ""
         logs = instance['chat_logs']
         participant_info = instance['participant_info']
 
-        for log in logs:
-            if log['text'] in ["Submit-Deal", "Accept-Deal", "Walk-Away", "Reject-Deal"]:
-                continue
-            round_str = log['id'] + ": " + log['text'] + "\n"
-            dialogue += round_str
-
-        dialogue = dialogue.replace("mturk_agent_1:", "YOU:")
-        dialogue = dialogue.replace("mturk_agent_2:", "THEM:")
+        dialogue = self._build_ca_dialogue(logs, agent)
 
         agent1_dict = participant_info["mturk_agent_1"]["value2issue"]
         agent2_dict = participant_info["mturk_agent_2"]["value2issue"]
@@ -846,22 +901,16 @@ class WBaseTaskHandler:
         return final_prompts, final_predictions, final_ground_truth
 
     def get_partial_dial_ca(self, num_utt, instance, prompt_template):
-        dialogue = ""
         logs = instance['chat_logs']
         participant_info = instance['participant_info']
-        history = logs[:num_utt]
+        eval_agent = "mturk_agent_1"
 
-        history2 = []
-        for utt in history:
-            if utt['text'] not in ["Submit-Deal", "Accept-Deal", "Walk-Away", "Reject-Deal"]:
-                history2.append(utt)
-        if len(history2) > 5:
-            history2 = history2[-5:]
+        dialogue = self._build_ca_dialogue(logs, eval_agent, limit=num_utt)
 
-        for utt in history2:
-            dialogue += utt['id'] + ": " + utt['text'] + "\n"
-        dialogue = dialogue.replace("mturk_agent_1:", "YOU:")
-        dialogue = dialogue.replace("mturk_agent_2:", "THEM:")
+        dialogue_lines = dialogue.strip().split("\n")
+        if len(dialogue_lines) > 5:
+            dialogue_lines = dialogue_lines[-5:]
+        dialogue = "\n".join(dialogue_lines) + "\n"
 
         agent1_dict = participant_info["mturk_agent_1"]["value2issue"]
         agent1_switched = {item: level for level, item in agent1_dict.items()}

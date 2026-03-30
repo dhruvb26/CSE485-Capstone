@@ -1,9 +1,9 @@
 models:
   - type: local_model
-    model_path: checkpoints/grpo-selfplay
-    base_model: Qwen/Qwen2.5-7B-Instruct
+    model_path: Qwen/Qwen2.5-7B-Instruct
+    # base_model: Qwen/Qwen2.5-7B-Instruct
     trust_remote_code: true
-    label: grpo-selfplay-0329
+    label: qwen2.5-7b-instruct
     max_new_tokens: 2048
     token_limit: 8192
 
@@ -33,18 +33,7 @@ models:
 #
 # Use "all" to run every task, or "all_dnd", "all_casino", etc. for a dataset.
 tasks:
-  - sta_total_item_count_ca
-  - sta_max_points_ca
-  - sta_ask_point_values_ca
-  - sta_ask_high_priority_ca
-  - sta_ask_low_priority_ca
-  - mid_strategy_ca
-  - mid_ask_high_priority_ca
-  - mid_ask_low_priority_ca
-  - mid_partner_ask_high_priority_ca
-  - mid_partner_ask_low_priority_ca
-  - end_deal_specifics_ca
-  - end_deal_total_ca
+  - all_casino
 
 num_instances: 200
 max_num_instances: 200
