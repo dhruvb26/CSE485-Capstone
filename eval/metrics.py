@@ -43,14 +43,23 @@ class EvaluationMetrics:
             raise NotImplementedError(f"{metric} is not implemented")
 
     def bleu_rouge_score(self, gt: List, preds: List):
-        import evaluate
+        try:
+            import evaluate
+        except ImportError:
+            raise ImportError(
+                "The 'evaluate' library is required for BLEU/ROUGE scoring. "
+                "Install it with: pip install evaluate"
+            )
         bleu_metric = evaluate.load("bleu")
         rouge_metric = evaluate.load("rouge")
 
-        rouge_result = rouge_metric.compute(predictions=preds, references=gt)
+        preds_clean = [str(p).strip() or "." for p in preds]
+        gt_clean = [str(g).strip() or "." for g in gt]
+
+        rouge_result = rouge_metric.compute(predictions=preds_clean, references=gt_clean)
         rouge_result = {k: round(v, 2) for k, v in rouge_result.items()}
 
-        bleu_result = bleu_metric.compute(predictions=preds, references=gt, max_order=1)
+        bleu_result = bleu_metric.compute(predictions=preds_clean, references=gt_clean, max_order=1)
         bleu_result = {k: v for k, v in bleu_result.items()}
 
         return f"BLEU({bleu_result['bleu']})/Rouge({rouge_result['rouge1']})"

@@ -225,7 +225,8 @@ def score_logs(storage_dir):
 
         try:
             score = evaluator.compute_metric(preds=preds, gt=gt, metric=metric, quiet=True)
-        except Exception:
+        except Exception as exc:
+            print(f"  Warning: scoring failed for {path.name} ({metric}): {exc}", file=sys.stderr)
             continue
 
         dataset, model = _parse_dataset_model_from_stem(stem, task)

@@ -14,7 +14,8 @@
                 "end_partner_deal_satisfaction_ca"
             ],
             "dialog_act": [
-                "mid_dial_act_cra"
+                "mid_dial_act_cra",
+                "mid_dial_act_dnd"
             ]
         },
         "regression": {
