@@ -1,9 +1,9 @@
 models:
   - type: local_model
     # Text-only eval: VL Qwen3.5 checkpoints use Qwen3_5ForConditionalGeneration (see local_model.py).
-    model_path: checkpoints/grpo-selfplay-3/merged-final
+    model_path: checkpoints/grpo-selfplay
     trust_remote_code: true
-    label: grpo-selfplay-3
+    label: grpo-selfplay-0329
     max_new_tokens: 2048
     token_limit: 8192
 
@@ -46,8 +46,8 @@ tasks:
   - end_deal_specifics_ca
   - end_deal_total_ca
 
-num_instances: 50
-max_num_instances: 50
+num_instances: 200
+max_num_instances: 200
 
 use_cot: true             # structured reasoning with <answer> extraction
 num_multishot: 0          # number of multishot examples (0 or 2)
