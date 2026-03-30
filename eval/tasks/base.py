@@ -11,31 +11,40 @@ import json
 from eval import utils
 
 
-def _extract_last_answer(text):
-    """Return the content of the last <answer>...</answer> block, or None."""
-    end = text.rfind("</answer>")
+def _extract_last_tag(text, tag):
+    """Return the content of the last <tag>...</tag> block, or None."""
+    end = text.rfind(f"</{tag}>")
     if end == -1:
         return None
-    start = text.rfind("<answer>", 0, end)
+    start = text.rfind(f"<{tag}>", 0, end)
     if start == -1:
         return None
-    return text[start + len("<answer>"):end].strip()
+    return text[start + len(f"<{tag}>"):end].strip()
+
+
+def _extract_last_answer(text):
+    """Return the content of the last <answer>...</answer> block,
+    falling back to <action>...</action> for RL-trained models."""
+    return _extract_last_tag(text, "answer") or _extract_last_tag(text, "action")
 
 
 def _extract_last_json_answer(raw):
-    """Return the content of the last <answer>{...}</answer> block, or None."""
-    search_end = len(raw)
-    while True:
-        end = raw.rfind("</answer>", 0, search_end)
-        if end == -1:
-            return None
-        start = raw.rfind("<answer>", 0, end)
-        if start == -1:
-            return None
-        inner = raw[start + len("<answer>"):end].strip()
-        if inner.startswith("{") and inner.endswith("}"):
-            return inner
-        search_end = start
+    """Return the content of the last <answer>{...}</answer> block,
+    falling back to <action>{...}</action> for RL-trained models."""
+    for tag in ("answer", "action"):
+        search_end = len(raw)
+        while True:
+            end = raw.rfind(f"</{tag}>", 0, search_end)
+            if end == -1:
+                break
+            start = raw.rfind(f"<{tag}>", 0, end)
+            if start == -1:
+                break
+            inner = raw[start + len(f"<{tag}>"):end].strip()
+            if inner.startswith("{") and inner.endswith("}"):
+                return inner
+            search_end = start
+    return None
 
 
 class KBaseTaskHandler:

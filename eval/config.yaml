@@ -1,9 +1,9 @@
 models:
   - type: local_model
-    model_path: checkpoints/grpo-selfplay
-    base_model: Qwen/Qwen2.5-7B-Instruct
+    model_path: Qwen/Qwen2.5-7B-Instruct
+    # base_model: Qwen/Qwen2.5-7B-Instruct
     trust_remote_code: true
-    label: qwen2.5-7b-grpo-selfplay
+    label: qwen2.5-7b-instruct
     max_new_tokens: 2048
     token_limit: 8192
 
@@ -33,7 +33,7 @@ models:
 #
 # Use "all" to run every task, or "all_dnd", "all_casino", etc. for a dataset.
 tasks:
-  - all_casino
+  - all_dnd
 
 num_instances: 200
 max_num_instances: 200

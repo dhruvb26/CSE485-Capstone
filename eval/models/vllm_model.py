@@ -66,6 +66,8 @@ class VLLMModelHandler(BaseModelHandler):
                 )
                 output_text = gen_output.choices[0].message.content or ""
                 output_text = re.sub(r"<think>.*?</think>", "", output_text, flags=re.DOTALL).strip()
+                output_text = re.sub(r"<thought>.*?</thought>", "", output_text, flags=re.DOTALL).strip()
+                output_text = re.sub(r"<talk>.*?</talk>", "", output_text, flags=re.DOTALL).strip()
                 outputs[inputs[index]] = output_text
             except Exception as e:
                 print(f"Error at index {index}: {e}")

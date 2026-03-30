@@ -150,6 +150,8 @@ class LocalModelHandler(BaseModelHandler):
             new_tokens = generated[0][model_inputs["input_ids"].shape[1]:]
             output_text = self.tokenizer.decode(new_tokens, skip_special_tokens=False).strip()
             output_text = re.sub(r"<think>.*?</think>", "", output_text, flags=re.DOTALL).strip()
+            output_text = re.sub(r"<thought>.*?</thought>", "", output_text, flags=re.DOTALL).strip()
+            output_text = re.sub(r"<talk>.*?</talk>", "", output_text, flags=re.DOTALL).strip()
             for tok in self.tokenizer.all_special_tokens:
                 output_text = output_text.replace(tok, "")
             output_text = output_text.strip()
