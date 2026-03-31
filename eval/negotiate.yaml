@@ -1,10 +1,10 @@
-csv_path: data/casino/train.csv
+csv_path: data/casino/ca.test.csv
 num_episodes: 200
 max_turns: 18
 temperature: 0.7
 top_p: 0.9
 seed: 42
-output_dir: logs/negotiate
+output_dir: logs/negotiate-2
 
 persona_weights:
   uncompromising: 0.25
