@@ -1,0 +1,31 @@
+[project]
+name = "asu-ai-negotiation-agent"
+version = "0.0.0"
+description = "Post-run analysis tooling for negotiation-agent training"
+requires-python = ">=3.10"
+
+dependencies = [
+    "trackio",
+    "matplotlib",
+    "pandas",
+    "numpy",
+    "huggingface-hub",
+    "pyyaml",
+    "loguru",
+    "rich",
+    "datasets>=4.8.4",
+]
+
+[project.optional-dependencies]
+eval = [
+    "openai",
+    "tiktoken",
+    "scikit-learn",
+    "python-dotenv",
+    "requests",
+    "tqdm",
+    "pydantic>=2,<3",
+]
+
+[tool.uv]
+dev-dependencies = ["ipython"]
