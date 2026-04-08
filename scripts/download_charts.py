@@ -4,6 +4,7 @@ Usage:
     uv run scripts/download_charts.py
     uv run scripts/download_charts.py --run sft-0328-0839
     uv run scripts/download_charts.py --light
+    uv run scripts/download_charts.py --data-only
 """
 
 from __future__ import annotations
@@ -235,7 +236,7 @@ def fetch_all_series(
     return results
 
 
-def run_group(group_name: str, group: dict) -> None:
+def run_group(group_name: str, group: dict, *, data_only: bool = False) -> dict:
     runs = group["runs"]
     keep_fn = group["keep"]
 
@@ -253,25 +254,37 @@ def run_group(group_name: str, group: dict) -> None:
 
     out_dir = ASSETS / group_name
     saved = 0
+    group_data: dict[str, list[dict]] = {}
     for metric in sorted(all_metrics):
         series_list = by_metric[metric]
         if not series_list:
             continue
         series_list.sort(key=lambda s: runs.index(s.run) if s.run in runs else 0)
-        plot_metric(series_list, out_dir / metric_to_filename(metric))
+        if not data_only:
+            plot_metric(series_list, out_dir / metric_to_filename(metric))
+        group_data[metric] = [
+            {"run": s.run, "steps": s.steps, "values": s.values} for s in series_list
+        ]
         saved += 1
 
-    print(f"  {saved} charts saved")
+    print(f"  {saved} {'metrics fetched' if data_only else 'charts saved'}")
+    return group_data
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", help="Only process groups containing this run name")
     parser.add_argument("--light", action="store_true", help="Light mode charts")
+    parser.add_argument(
+        "--data-only",
+        action="store_true",
+        help="Only fetch raw data JSON, skip chart PNGs",
+    )
     args = parser.parse_args()
 
     global theme
-    theme = THEME["light"] if args.light else THEME["dark"]
+    if not args.data_only:
+        theme = THEME["light"] if args.light else THEME["dark"]
 
     if args.run:
         groups = {
@@ -283,10 +296,15 @@ def main() -> None:
     else:
         groups = RUN_GROUPS
 
+    all_data: dict[str, dict] = {}
     for group_name, group in groups.items():
-        run_group(group_name, group)
+        all_data[group_name] = run_group(group_name, group, data_only=args.data_only)
 
-    print("\ndone")
+    out_json = ASSETS / "charts_data.json"
+    out_json.write_text(json.dumps(all_data, indent=2))
+    print(f"\nraw data saved to {out_json.relative_to(ASSETS.parent)}")
+
+    print("done")
 
 
 if __name__ == "__main__":
