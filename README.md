@@ -5,6 +5,8 @@
 - [Training](#training)
 - [Evaluation](#evaluation)
 - [Datasets](#datasets)
+- [Charts](#charts)
+- [Report](#report)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
@@ -29,13 +31,17 @@ Check out [Google Drive](https://drive.google.com/drive/folders/10iKqBuJy0eDGJXZ
 
 ## Setup
 
-### 1. Get a GPU shell on SOL
+Training and evaluation run on [ASU Research Computing (SOL)](https://docs.rc.asu.edu/), which provides A100 GPUs via SLURM. For lightweight tasks like generating charts, compiling the report, or running eval scripts locally, we use [uv](https://docs.astral.sh/uv/) as the Python package manager.
+
+### SOL (GPU training & evaluation)
+
+#### 1. Get a GPU shell on SOL
 
 ```bash
 interactive -p htc -t 2:00:00 --gres=gpu:a100:1
 ```
 
-### 2. Load modules and create environment
+#### 2. Load modules and create environment
 
 ```bash
 module load mamba/latest
@@ -45,11 +51,37 @@ mamba env create -f environment.yml
 conda activate venv
 ```
 
-### 3. Verify GPU allocation (optional)
+#### 3. Verify GPU allocation (optional)
 
 ```bash
 nvidia-smi
 ```
+
+### Local (charts, eval, report)
+
+#### 1. Install uv
+
+```bash
+brew install uv
+```
+
+#### 2. Sync dependencies
+
+```bash
+uv sync            # core dependencies
+uv sync --extra eval  # include eval dependencies
+```
+
+This reads `pyproject.toml` and creates a `.venv` automatically.
+
+#### 3. Run scripts
+
+```bash
+uv run scripts/download_charts.py
+uv run -m eval --list-tasks
+```
+
+No manual `venv` activation needed — `uv run` handles it.
 
 ## Training
 
@@ -121,6 +153,68 @@ python data/download.py --dataset <name>
 ```
 
 Available datasets: `amazon_history_price`, `casino`, `cra`, `craigslist_bargains`, `dnd`, `ji`, `ebay_best_offer`. See [`DATASETS.md`](data/DATASETS.md) for full details on each.
+
+## Charts
+
+The `scripts/download_charts.py` script fetches training metrics from the [Trackio](https://github.com/gradio-app/trackio) HuggingFace Space and generates chart PNGs into `assets/`. Dependencies (`trackio`, `matplotlib`, `huggingface-hub`) are handled by `uv sync` (see [Local setup](#local-charts-eval-report) above).
+
+### HuggingFace Authentication
+
+The Trackio CLI needs access to the HF Space. Either log in interactively:
+
+```bash
+huggingface-cli login
+```
+
+Or set the token as an environment variable:
+
+```bash
+export HF_TOKEN=hf_...
+```
+
+### Usage
+
+```bash
+uv run scripts/download_charts.py              # all run groups, dark theme
+uv run scripts/download_charts.py --light       # light theme
+uv run scripts/download_charts.py --run sft-0328-0839  # single run group
+```
+
+Charts are saved to `assets/<group-name>/` (e.g. `assets/sft/`, `assets/grpo-selfplay/`).
+
+## Report
+
+The project white paper lives in `report/` and is compiled with [Pandoc](https://pandoc.org/).
+
+### Install Pandoc (macOS)
+
+```bash
+brew install pandoc
+```
+
+You also need a LaTeX distribution for PDF output:
+
+```bash
+brew install --cask mactex       # full install (~4 GB)
+# or
+brew install --cask basictex     # minimal install (~100 MB)
+```
+
+If using BasicTeX, you may need to install extra packages:
+
+```bash
+sudo tlmgr update --self
+sudo tlmgr install booktabs float collection-fontsrecommended
+```
+
+### Compile
+
+```bash
+cd report
+pandoc report.md -o report.pdf --citeproc
+```
+
+The YAML frontmatter in `report.md` handles all configuration (bibliography, citation style, layout). The `--citeproc` flag processes citations from `references.bib` using the IEEE style defined in `ieee.csl`.
 
 ## Troubleshooting
 
