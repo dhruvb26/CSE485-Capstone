@@ -64,7 +64,9 @@ def configure_judge(
         kwargs["base_url"] = base_url
     _judge_client = OpenAI(**kwargs)
     _judge_model = model
-    logger.info("Judge configured: model={} base_url={}", model, base_url or "(default)")
+    logger.info(
+        "Judge configured: model={} base_url={}", model, base_url or "(default)"
+    )
 
 
 @retry(
@@ -82,7 +84,7 @@ def _judge_call(client: OpenAI, *, system_prompt: str, user_content: str) -> str
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ],
-        temperature=0.4,
+        temperature=0.1,
     )
     if not response.choices:
         raise EmptyResponseError()
@@ -430,11 +432,7 @@ def points_reward(completions, **kwargs) -> list[float]:
             if alloc is None:
                 rewards.append(0.0)
                 continue
-            score = (
-                alloc["food"] * fp
-                + alloc["water"] * wp
-                + alloc["firewood"] * fwp
-            )
+            score = alloc["food"] * fp + alloc["water"] * wp + alloc["firewood"] * fwp
             rewards.append((score / mp) * 2.0 - 0.5)
 
         elif re.search(r"\[WALK_AWAY\]", action, re.IGNORECASE):

@@ -1,4 +1,4 @@
-mode: self_play
+mode: annotated
 
 model:
   name: Qwen/Qwen2.5-7B-Instruct
@@ -17,43 +17,14 @@ judge:
   base_url: https://openrouter.ai/api/v1
   api_key_env: OPENROUTER_API_KEY
 
-# grpo:
-#   checkpoint: checkpoints/sft-tuned-2
-#   data_path: data/casino/train.jsonl
-#   max_steps: 1000
-#   output_dir: checkpoints/grpo-annotated-2
-#   prompt_split: 0.6
-#   num_generations: 8
-#   beta: 0.0
-#   per_device_train_batch_size: 1
-#   gradient_accumulation_steps: 4
-#   learning_rate: 1.0e-6
-#   warmup_ratio: 0.1
-#   logging_steps: 10
-#   save_strategy: "steps"
-#   save_steps: 200
-#   save_total_limit: 2
-#   gradient_checkpointing: true
-#   bf16: true
-#   report_to: none
-
-#   extra_kwargs:
-#     generation_batch_size: 8
-#     log_completions: true
-#     loss_type: "dr_grpo"
-#     scale_rewards: false
-#     max_completion_length: 512
-
-# resume_from: latest
-
 grpo:
-  checkpoint: checkpoints/grpo-annotated-2
-  opponent_checkpoint: checkpoints/grpo-annotated-2
-  output_dir: checkpoints/grpo-selfplay
-  prompt_split: 0.6
+  checkpoint: checkpoints/sft-tuned-2
+  data_path: data/casino/train.jsonl
+  max_steps: 1000
+  output_dir: checkpoints/grpo-annotated-0409-1
+  prompt_split: 0.2
   num_generations: 8
-  beta: 0.04
-  num_online_iterations: 1
+  beta: 0.0
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 4
   learning_rate: 1.0e-6
@@ -65,16 +36,6 @@ grpo:
   gradient_checkpointing: true
   bf16: true
   report_to: none
-  csv_path: data/casino/train.csv
-  num_episodes: 400
-  max_turns: 18
-  temperature: 0.7
-  top_p: 0.9
-  persona_weights:
-    uncompromising: 0.25
-    selfish: 0.25
-    anchoring: 0.25
-    cooperative: 0.25
 
   extra_kwargs:
     generation_batch_size: 8
@@ -82,3 +43,43 @@ grpo:
     loss_type: "dr_grpo"
     scale_rewards: false
     max_completion_length: 512
+
+# resume_from: latest
+
+# grpo:
+#   checkpoint: checkpoints/grpo-annotated-2
+#   opponent_checkpoint: checkpoints/grpo-annotated-2
+#   output_dir: checkpoints/grpo-selfplay
+#   prompt_split: 0.4
+#   num_generations: 8
+#   beta: 0.04
+#   num_online_iterations: 2
+#   per_device_train_batch_size: 1
+#   gradient_accumulation_steps: 4
+#   learning_rate: 5.0e-7
+#   warmup_ratio: 0.1
+#   logging_steps: 10
+#   save_strategy: "steps"
+#   save_steps: 200
+#   save_total_limit: 2
+#   gradient_checkpointing: true
+#   bf16: true
+#   report_to: none
+#   csv_path: data/casino/train.csv
+#   num_episodes: 400
+#   max_turns: 18
+#   temperature: 0.7
+#   top_p: 0.9
+#   persona_weights:
+#     uncompromising: 0.25
+#     selfish: 0.25
+#     anchoring: 0.25
+#     cooperative: 0.25
+
+#   extra_kwargs:
+#     generation_batch_size: 8
+#     log_completions: true
+#     loss_type: "dr_grpo"
+#     scale_rewards: false
+#     max_completion_length: 512
+#     max_grad_norm: 1.0

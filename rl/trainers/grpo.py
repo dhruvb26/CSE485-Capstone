@@ -9,15 +9,22 @@ from loguru import logger
 from trl import GRPOConfig, GRPOTrainer
 
 from rl.callbacks import TrackioLoggingCallback
-from rl.trainers.base import BaseTrainer
 from rl.config import GRPOTrainerConfig, ModelConfig
-from rl.rewards import arithmetic_reward, configure_judge, format_reward, length_reward, thought_judge_reward
+from rl.rewards import (
+    arithmetic_reward,
+    configure_judge,
+    format_reward,
+    length_reward,
+    thought_judge_reward,
+)
+from rl.trainers.base import BaseTrainer
 
 _turn_reward_buffer: dict[str, list[tuple[float, float]]] = defaultdict(list)
 
 
 def _wrap_reward_with_turn_tracking(reward_fn):
     """Wrap a reward function to capture (normalised turn position, reward)."""
+
     def wrapper(completions, **kwargs):
         rewards = reward_fn(completions, **kwargs)
         turn_indices = kwargs.get("turn_index", [])
@@ -29,6 +36,7 @@ def _wrap_reward_with_turn_tracking(reward_fn):
             position = ti / max(tt - 1, 1)
             _turn_reward_buffer[name].append((position, r))
         return rewards
+
     wrapper.__name__ = reward_fn.__name__
     return wrapper
 
@@ -108,12 +116,14 @@ class AnnotatedGRPOTrainer(BaseTrainer):
                         prompt = messages[:assistant_index]
                         if not prompt or prompt[-1]["role"] != "user":
                             continue
-                        prompts.append({
-                            "prompt": prompt,
-                            "system_prompt": system_prompt,
-                            "turn_index": turn_pos,
-                            "total_turns": total_turns,
-                        })
+                        prompts.append(
+                            {
+                                "prompt": prompt,
+                                "system_prompt": system_prompt,
+                                "turn_index": turn_pos,
+                                "total_turns": total_turns,
+                            }
+                        )
         except Exception:
             logger.exception(
                 f"Failed to build annotated GRPO prompts from {cfg.data_path}"
@@ -147,6 +157,7 @@ class AnnotatedGRPOTrainer(BaseTrainer):
             gradient_checkpointing=cfg.gradient_checkpointing,
             bf16=cfg.bf16,
             report_to=cfg.report_to,
+            reward_weights=[0.5, 1.0, 0.5, 2.0],
             **cfg.extra_kwargs,
         )
         peft_config = self._build_peft_config(cfg.lora)
@@ -155,7 +166,12 @@ class AnnotatedGRPOTrainer(BaseTrainer):
 
         reward_funcs = [
             _wrap_reward_with_turn_tracking(fn)
-            for fn in [length_reward, thought_judge_reward, format_reward, arithmetic_reward]
+            for fn in [
+                length_reward,
+                thought_judge_reward,
+                format_reward,
+                arithmetic_reward,
+            ]
         ]
 
         return TurnTrackingGRPOTrainer(

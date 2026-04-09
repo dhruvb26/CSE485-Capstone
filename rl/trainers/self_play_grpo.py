@@ -10,10 +10,10 @@ from dataclasses import dataclass, field
 import torch
 from datasets import Dataset
 from loguru import logger
-from tqdm import tqdm
 from peft import PeftModel
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM
-from trl import GRPOConfig, GRPOTrainer
+from trl import GRPOConfig
 
 from rl.callbacks import TrackioLoggingCallback
 from rl.config import ModelConfig, SelfPlayConfig
@@ -28,7 +28,13 @@ from rl.rewards import (
     thought_judge_reward,
 )
 from rl.trainers.base import BaseTrainer
-from rl.utils import extract_tag, flip_deal_perspective, parse_submit_deal, strip_thought
+from rl.trainers.grpo import TurnTrackingGRPOTrainer, _wrap_reward_with_turn_tracking
+from rl.utils import (
+    extract_tag,
+    flip_deal_perspective,
+    parse_submit_deal,
+    strip_thought,
+)
 
 
 @dataclass
@@ -123,6 +129,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         else:
             logger.info("No opponent checkpoint found — cloning learner weights")
             import copy
+
             opponent = copy.deepcopy(self.model)
 
         opponent.eval()
@@ -222,7 +229,10 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                 )
                 learner_messages.append({"role": "assistant", "content": response})
                 opponent_messages.append(
-                    {"role": "user", "content": flip_deal_perspective(strip_thought(response))}
+                    {
+                        "role": "user",
+                        "content": flip_deal_perspective(strip_thought(response)),
+                    }
                 )
                 episode.learner_turns.append(len(learner_messages) - 1)
             else:
@@ -238,7 +248,10 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                 )
                 opponent_messages.append({"role": "assistant", "content": response})
                 learner_messages.append(
-                    {"role": "user", "content": flip_deal_perspective(strip_thought(response))}
+                    {
+                        "role": "user",
+                        "content": flip_deal_perspective(strip_thought(response)),
+                    }
                 )
 
             action = extract_tag(response, "action")
@@ -371,9 +384,12 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                 learner_value_to_issue[level].lower(): self.points[level]
                 for level in ("High", "Medium", "Low")
             }
-            split_at = max(1, int(len(episode.learner_turns) * cfg.prompt_split))
+            total_turns = len(episode.learner_turns)
+            split_at = max(1, int(total_turns * cfg.prompt_split))
 
-            for learner_turn_index in episode.learner_turns[split_at:]:
+            for turn_pos, learner_turn_index in enumerate(
+                episode.learner_turns[split_at:], start=split_at
+            ):
                 prompt = episode.learner_messages[:learner_turn_index]
                 if not prompt or prompt[-1]["role"] != "user":
                     continue
@@ -390,6 +406,8 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                     {
                         "prompt": prompt,
                         "system_prompt": episode.learner_messages[0]["content"],
+                        "turn_index": turn_pos,
+                        "total_turns": total_turns,
                         "food_points": point_map.get("food", 3),
                         "water_points": point_map.get("water", 3),
                         "firewood_points": point_map.get("firewood", 3),
@@ -417,7 +435,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         )
         return Dataset.from_list(rows)
 
-    def build_trainer(self, train_dataset: Dataset) -> GRPOTrainer:
+    def build_trainer(self, train_dataset: Dataset) -> TurnTrackingGRPOTrainer:
         cfg = self.self_play_config
 
         training_args = GRPOConfig(
@@ -437,24 +455,29 @@ class SelfPlayGRPOTrainer(BaseTrainer):
             gradient_checkpointing=cfg.gradient_checkpointing,
             bf16=cfg.bf16,
             report_to=cfg.report_to,
-            reward_weights=[0.5, 1.0, 0.5, 0.5, 2.0, 2.0],
+            reward_weights=[0.5, 1.0, 0.5, 1.0, 1.0, 1.0],
             **cfg.extra_kwargs,
         )
         peft_config = self._build_peft_config(cfg.lora)
 
         os.makedirs(training_args.output_dir, exist_ok=True)
 
-        return GRPOTrainer(
-            model=self.model,
-            args=training_args,
-            reward_funcs=[
+        reward_funcs = [
+            _wrap_reward_with_turn_tracking(fn)
+            for fn in [
                 length_reward,
                 thought_judge_reward,
                 format_reward,
                 arithmetic_reward,
                 outcome_reward,
                 points_reward,
-            ],
+            ]
+        ]
+
+        return TurnTrackingGRPOTrainer(
+            model=self.model,
+            args=training_args,
+            reward_funcs=reward_funcs,
             train_dataset=train_dataset,
             processing_class=self.tokenizer,
             peft_config=peft_config,
