@@ -28,3 +28,4 @@ checkpoints/
 
 # Slurm .out files
 *.out
+raw/
