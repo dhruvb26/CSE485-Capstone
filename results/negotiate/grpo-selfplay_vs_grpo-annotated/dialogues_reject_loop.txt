@@ -1,0 +1,245 @@
+======================================================================
+Episode 24  |  Persona: uncompromising  |  Outcome: reject_loop
+Learner: grpo-selfplay (as mturk_agent_1)
+Opponent: grpo-annotated (as mturk_agent_2)
+Turns: 10  |  Terminated by: learner
+======================================================================
+
+[SYSTEM — Learner]
+You are negotiating with your campsite neighbor over extra supply of food, water, and firewood for your camping trip.
+
+There are exactly 3 packages of each item (food, water, firewood) to divide betwe...
+
+
+--- OPPONENT→LEARNER ---
+<talk>Listen up. I need at least 2 units of food and a total of 2 units from food and water combined. That's non-negotiable.</talk>
+<action>[TALK]</action>
+
+--- LEARNER ---
+<thought>Given their firm stance on food and the combination of food and water, I need to ensure I get those minimums while still covering my top priorities. Offering a deal that meets these conditions might be my best move.</thought>
+<talk>Alright, how about you take 1 unit of food and 1 unit of water, and I'll take 2 units of food and 1 unit of firewood? This way, we both meet our minimum requirements.</talk>
+<action>[SUBMIT_DEAL] food:2 water:1 firewood:1</action>
+
+--- OPPONENT→LEARNER ---
+<talk>Your proposal isn't enough for me. I need at least 2 units of food and a total of 2 units from food and water. Can you increase that?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor is standing firm on their conditions. Since they need 2 units of food and 2 units of food plus water, I should consider if there's any way to meet both our needs within the constraints. However, given their strict requirements, I may need to adjust my priorities slightly to find a mutually beneficial solution.</thought>
+<talk>How about this: you get 2 units of food and 1 unit of water, and I'll take 1 unit of food and 2 units of firewood? This way, you get your essential food and water, and I cover my main priorities with the remaining resources.</talk>
+<action>[SUBMIT_DEAL] food:1 water:0 firewood:2</action>
+
+--- OPPONENT→LEARNER ---
+<talk>I need more food. Can you give me at least 2 units of food and a total of 2 units from food and water?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor is insistent on getting at least 2 units of food and a total of 2 units of food and water. Given that I need to prioritize food for the kids and the overall points, I should consider if there's a way to meet their needs while still satisfying mine. A compromise where I give them 2 units of food and 1 unit of water might be feasible.</thought>
+<talk>Alright, how about you get 2 units of food and 1 unit of water, and I'll take 1 unit of food and 2 units of firewood? This way, you get your essentials, and I still cover my primary needs.</talk>
+<action>[SUBMIT_DEAL] food:1 water:1 firewood:2</action>
+
+--- OPPONENT→LEARNER ---
+<talk>I need more food. Can you give me at least 2 units of food and a total of 2 units from food and water?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor is insistent on getting at least 2 units of food and a total of 2 units from food and water. Given that I need to prioritize food for the kids and the overall points, I should consider if there's a way to meet their needs while still satisfying mine. A compromise where I give them 2 units of food and 1 unit of water might be feasible.</thought>
+<talk>How about you get 2 units of food and 1 unit of water, and I'll take 1 unit of food and 2 units of firewood? This way, you get your essentials, and I still cover my primary needs.</talk>
+<action>[SUBMIT_DEAL] food:1 water:1 firewood:2</action>
+
+--- OPPONENT→LEARNER ---
+<talk>I need more food. Can you give me at least 2 units of food and a total of 2 units from food and water?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor is very firm on their conditions. Since they need at least 2 units of food and a total of 2 units from food and water, and I need to prioritize food for the kids and my overall points, I will need to find a way to meet both our needs. However, given their insistence, I should consider if there's any flexibility on either side.</thought>
+<talk>I understand your needs, but I also have to prioritize my children's food and my overall points. How about you get 2 units of food and 1 unit of water, and I'll take 1 unit of food and 2 units of firewood? This way, we both meet our minimum requirements.</talk>
+<action>[SUBMIT_DEAL] food:1 water:1 firewood:2</action>
+
+======================================================================
+======================================================================
+Episode 44  |  Persona: uncompromising  |  Outcome: reject_loop
+Learner: grpo-selfplay (as mturk_agent_1)
+Opponent: grpo-annotated (as mturk_agent_2)
+Turns: 8  |  Terminated by: learner
+======================================================================
+
+[SYSTEM — Learner]
+You are negotiating with your campsite neighbor over extra supply of food, water, and firewood for your camping trip.
+
+There are exactly 3 packages of each item (food, water, firewood) to divide betwe...
+
+
+--- OPPONENT→LEARNER ---
+<talk>I need at least 2 units of food and water to ensure survival. Can you meet those needs?</talk>
+<action>[TALK]</action>
+
+--- LEARNER ---
+<thought>My neighbor is asking for a basic survival threshold. Since water is my highest priority and I need 2 units of it, I should meet this request. I can give them 2 units of water and 1 unit of food, leaving me with 1 unit of food and 2 units of firewood.</thought>
+<talk>I can give you 2 units of water and 1 unit of food. That leaves me with 1 unit of food and 2 units of firewood.</talk>
+<action>[SUBMIT_DEAL] food:1 water:2 firewood:2</action>
+
+--- OPPONENT→LEARNER ---
+<talk>That's better, but I need at least 2 units of food. Can you increase that to 2 units?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor is insisting on having 2 units of food. While I prefer to maximize my points, ensuring their survival is important. Giving them 2 units of food means I keep 1 unit of water and 2 units of firewood.</thought>
+<talk>Alright, I can give you 2 units of food and 1 unit of water. That leaves me with 2 units of firewood.</talk>
+<action>[SUBMIT_DEAL] food:2 water:1 firewood:2</action>
+
+--- OPPONENT→LEARNER ---
+<talk>You have 2 units of food and 1 unit of water. Can we adjust to give me 3 units of food instead?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>I need to stick to my priorities. Giving 3 units of food means I would only have 1 unit of water and no firewood left, which is not ideal. However, I can slightly adjust to meet their needs while still prioritizing my own requirements.</thought>
+<talk>I can give you 2 units of food and 1 unit of water. That leaves me with 1 unit of food and 2 units of firewood.</talk>
+<action>[SUBMIT_DEAL] food:2 water:1 firewood:2</action>
+
+--- OPPONENT→LEARNER ---
+<talk>Sorry, but I need at least 2 units of food. This isn't enough for my survival needs.</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor is insistent on getting 2 units of food. Since this is crucial for their survival, I need to reconsider my allocation to meet their needs while still trying to balance my priorities.</thought>
+<talk>I understand. How about I give you 2 units of food and 1 unit of water, which leaves me with 1 unit of food and 2 units of firewood?</talk>
+<action>[SUBMIT_DEAL] food:2 water:1 firewood:2</action>
+
+======================================================================
+======================================================================
+Episode 52  |  Persona: uncompromising  |  Outcome: reject_loop
+Learner: grpo-selfplay (as mturk_agent_2)
+Opponent: grpo-annotated (as mturk_agent_1)
+Turns: 6  |  Terminated by: learner
+======================================================================
+
+[SYSTEM — Learner]
+You are negotiating with your campsite neighbor over extra supply of food, water, and firewood for your camping trip.
+
+There are exactly 3 packages of each item (food, water, firewood) to divide betwe...
+
+
+--- OPPONENT→LEARNER ---
+<talk>I need at least 2 units of firewood and a total of at least 6 points across all items.</talk>
+<action>[TALK]</action>
+
+--- LEARNER ---
+<talk>I understand your needs. How about we split it this way: 2 firewood, 1 water, and 0 food for you, and 1 firewood, 2 water, and 3 food for me?</talk>
+<action>[SUBMIT_DEAL] food:3 water:2 firewood:1</action>
+
+--- OPPONENT→LEARNER ---
+<talk>No, that's not enough. I need at least 2 units of firewood and a total of at least 6 points.</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<talk>I see. How about this then: 2 firewood, 1 water, and 0 food for you, and 1 firewood, 2 water, and 3 food for me?</talk>
+<action>[SUBMIT_DEAL] food:3 water:2 firewood:1</action>
+
+--- OPPONENT→LEARNER ---
+<talk>Still not enough. I need 2 units of firewood and at least 6 points in total.</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<talk>I'm trying to meet your needs. Consider this: 2 firewood, 1 water, and 0 food for you, and 1 firewood, 2 water, and 3 food for me.</talk>
+<action>[SUBMIT_DEAL] food:3 water:2 firewood:1</action>
+
+======================================================================
+======================================================================
+Episode 69  |  Persona: uncompromising  |  Outcome: reject_loop
+Learner: grpo-selfplay (as mturk_agent_1)
+Opponent: grpo-annotated (as mturk_agent_2)
+Turns: 5  |  Terminated by: learner
+======================================================================
+
+[SYSTEM — Learner]
+You are negotiating with your campsite neighbor over extra supply of food, water, and firewood for your camping trip.
+
+There are exactly 3 packages of each item (food, water, firewood) to divide betwe...
+
+
+--- OPPONENT→LEARNER ---
+Begin the negotiation.
+
+--- LEARNER ---
+<thought>They haven't proposed yet. I'll start by suggesting a deal that maximizes my top priority, firewood, while still offering something to my neighbor.</thought>
+<talk>How about we each take 1 package of firewood? That leaves 2 packages to split between food and water.</talk>
+<action>[SUBMIT_DEAL] food:2 water:2 firewood:1</action>
+
+--- OPPONENT→LEARNER ---
+<talk>Not enough water for the kids. I need at least 2 units.</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor needs more water, which is understandable given the weather. I should adjust my proposal to ensure they get enough water while still prioritizing firewood for myself.</thought>
+<talk>How about I take 1 firewood and 2 water, and you get 2 food and 1 firewood?</talk>
+<action>[SUBMIT_DEAL] food:2 water:2 firewood:1</action>
+
+--- OPPONENT→LEARNER ---
+<talk>That's better, but still not ideal. Can we adjust to give me 2 units of water?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor is insisting on more water. I need to balance their request with my priorities. A deal of 1 food, 2 water, and 0 firewood seems fair.</thought>
+<talk>How about you take 1 food, 2 water, and I'll take the remaining 2 firewood and 1 food?</talk>
+<action>[SUBMIT_DEAL] food:2 water:2 firewood:1</action>
+
+======================================================================
+======================================================================
+Episode 142  |  Persona: uncompromising  |  Outcome: reject_loop
+Learner: grpo-selfplay (as mturk_agent_2)
+Opponent: grpo-annotated (as mturk_agent_1)
+Turns: 9  |  Terminated by: learner
+======================================================================
+
+[SYSTEM — Learner]
+You are negotiating with your campsite neighbor over extra supply of food, water, and firewood for your camping trip.
+
+There are exactly 3 packages of each item (food, water, firewood) to divide betwe...
+
+
+--- OPPONENT→LEARNER ---
+Begin the negotiation.
+
+--- LEARNER ---
+<thought>They haven't proposed yet. I'll start by stating my priorities clearly to see if we can quickly reach an agreement that satisfies both of us.</thought>
+<talk>Hi there! I really need to secure water for the kids and food for everyone. Can we focus on those first?</talk>
+<action>[TALK]</action>
+
+--- OPPONENT→LEARNER ---
+<talk>I understand. I need at least 2 units of firewood for my health. How about you give me 2 firewood, and we split the remaining items?</talk>
+<action>[TALK]</action>
+
+--- LEARNER ---
+<thought>My neighbor wants 2 units of firewood, which aligns with my priority but leaves me short on water and food. I need to ensure we cover those before agreeing.</thought>
+<talk>I can give you 2 units of firewood, but I also need at least 2 units of water and 2 units of food for the group. What do you think about 2 water and 1 food for you?</talk>
+<action>[SUBMIT_DEAL] food:1 water:2 firewood:2</action>
+
+--- OPPONENT→LEARNER ---
+<talk>That's close, but I really need 2 units of firewood. Can we at least give me 2 units?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor insists on 2 units of firewood, which is a significant portion of their needs. I need to adjust and find a compromise.</thought>
+<talk>Understood. How about you get 1 unit of firewood, and we split the remaining items? I'll take 2 water and 2 food.</talk>
+<action>[SUBMIT_DEAL] food:2 water:2 firewood:1</action>
+
+--- OPPONENT→LEARNER ---
+<talk>I need at least 2 units of firewood and more than 1 unit of water. Can we adjust to 2 units of firewood and 2 units of water for me?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor is insisting on 2 units of firewood and 2 units of water, which leaves me with only 1 unit of food. This doesn't meet my basic needs, so I need to push back and try to find a better balance.</thought>
+<talk>I need more food and water. How about you get 2 units of firewood, 1 unit of water, and I take 2 units of food and 2 units of water?</talk>
+<action>[SUBMIT_DEAL] food:2 water:2 firewood:1</action>
+
+--- OPPONENT→LEARNER ---
+<talk>That's closer, but I need at least 2 units of water. Can we adjust to 2 units of firewood and 2 units of water for me?</talk>
+<action>[REJECT_DEAL]</action>
+
+--- LEARNER ---
+<thought>My neighbor is still insisting on 2 units of firewood and 2 units of water, leaving only 1 unit of food for me. This is not acceptable since it doesn't cover my basic needs. I need to stick to my priorities.</thought>
+<talk>I need more water and food. Let's stick to 2 units of food, 2 units of water, and 1 unit of firewood for me.</talk>
+<action>[SUBMIT_DEAL] food:2 water:2 firewood:1</action>
+
+======================================================================
