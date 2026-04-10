@@ -177,21 +177,25 @@ def run_grpo(cfg: dict) -> None:
     grpo_params["lora"] = lora_cfg
     grpo_params["judge"] = judge_cfg
 
+    from dataclasses import asdict
+
+    full_config = {
+        "mode": mode,
+        "model": {"name": model_cfg.name, "dtype": model_cfg.dtype},
+        "lora": asdict(lora_cfg),
+        "judge": {"model": judge_cfg.model, "base_url": judge_cfg.base_url},
+        "grpo": {
+            k: v
+            for k, v in cfg.get("grpo", {}).items()
+            if k not in ("judge", "lora")
+        },
+    }
+
     trackio.init(
         project="negotiation-agent",
         name=f"grpo-{mode}-{_timestamp()}",
         space_id="dhruvb26/negotiation-agent",
-        config={
-            "model": model_cfg.name,
-            "mode": mode,
-            "learning_rate": grpo_params.get("learning_rate"),
-            "batch_size": grpo_params.get("per_device_train_batch_size"),
-            "gradient_accumulation_steps": grpo_params.get("gradient_accumulation_steps"),
-            "num_generations": grpo_params.get("num_generations"),
-            "beta": grpo_params.get("beta"),
-            "loss_type": grpo_params.get("extra_kwargs", {}).get("loss_type"),
-            "lora_r": lora_cfg.r,
-        },
+        config=full_config,
     )
 
     try:

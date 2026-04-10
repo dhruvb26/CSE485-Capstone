@@ -66,7 +66,7 @@ grpo:
   bf16: true
   report_to: none
   csv_path: data/casino/train.csv
-  num_episodes: 400
+  num_episodes: 800
   max_turns: 18
   temperature: 0.7
   top_p: 0.9

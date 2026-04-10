@@ -116,31 +116,34 @@ You are evaluating the quality of strategic thinking in a camping-supply negotia
 Two neighbors are dividing 3 packages each of food, water, and firewood (9 items total). \
 Each party has different priority rankings (High/Medium/Low) for the three item types.
 
-Score the agent's <thought> tag on a 0-10 scale based on:
-- Strategic coherence: Does the reasoning reflect an understanding of the agent's own \
-priorities, the opponent's likely priorities, or both?
-- Opponent modeling: Does it consider the opponent's satisfaction, likely reactions, or \
-inferred preferences? Analyzing what the opponent gets and whether they would accept is \
-a core negotiation competency, especially when closing a deal.
-- Situational awareness: Does it account for what has happened in the negotiation so far? \
-Building on reasoning established in prior turns (rather than redundantly repeating it) \
-is a sign of coherent multi-turn thinking, not a gap.
-- Action justification: Does the thought logically support the action the agent chose?
+You will be given the agent's priorities, the recent conversation history, and the \
+agent's current thought and action. Score the <thought> tag on a 0-10 scale based on:
+
+- Contextual reasoning: Does the thought respond to what the opponent just said or \
+proposed? A good thought references and reacts to the opponent's latest message.
+- Strategic coherence: Does the reasoning reflect the agent's own priorities and form \
+a clear plan for advancing toward a favorable deal?
+- Opponent modeling: Does it infer the opponent's preferences or satisfaction from \
+what they have said? Adapting strategy based on opponent behavior is critical.
+- Action justification: Does the thought logically support the chosen action given \
+the current conversation state?
 
 The importance of each criterion is stage-dependent. Early in the negotiation, probing \
 the opponent's needs and anchoring matter most. When finalizing a deal, confirming that \
-the opponent will accept and locking in the agreement matters most — recalculating the \
-agent's own score is unnecessary if it was already established.
+the opponent will accept and locking in the agreement matters most.
 
 For [SUBMIT_DEAL] actions, the deal specifies the agent's OWN allocation (the neighbor \
 receives the remainder, i.e. 3 minus each value). Check that the proposed allocation is \
 consistent with the arithmetic and strategic reasoning in the thought.
 
-Respond with ONLY a JSON object, no other text: {"score": N}"""
+Respond with ONLY a JSON object, no other text: {{"score": N}}"""
 
 THOUGHT_JUDGE_USER_PROMPT = """\
 Agent's negotiation instructions and priorities:
 {system_prompt}
+
+Recent conversation:
+{conversation_context}
 
 Agent's internal thought:
 <thought>{thought}</thought>

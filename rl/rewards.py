@@ -127,26 +127,38 @@ def length_reward(completions, **kwargs) -> list[float]:
     return rewards
 
 
+def _format_conversation_context(prompt, max_turns: int = 3) -> str:
+    """Extract the last few conversation turns from a prompt for the judge."""
+    if not prompt:
+        return "(no conversation history yet)"
+    messages = prompt if isinstance(prompt, list) else []
+    recent = [m for m in messages if m.get("role") in ("user", "assistant")][-max_turns * 2 :]
+    if not recent:
+        return "(no conversation history yet)"
+    lines = []
+    for m in recent:
+        role = "Agent" if m["role"] == "assistant" else "Neighbor"
+        content = m["content"]
+        if len(content) > 300:
+            content = content[:300] + "..."
+        lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
 def thought_judge_reward(completions, **kwargs) -> list[float]:
     """
     LLM-as-a-judge reward that evaluates the quality of the ``<thought>`` tag
     using an OpenAI-compatible API (OpenAI, OpenRouter, etc.).
 
     Sends each completion's thought (and action, when present) along with the
-    agent's negotiation context to a judge model. The judge returns a 0-10
-    score which is normalised to [0.0, 1.0]. For ``[SUBMIT_DEAL]`` actions the
-    full action string is included so the judge can verify arithmetic and
-    strategic consistency.
+    agent's negotiation context and recent conversation history to a judge
+    model. The judge returns a 0-10 score which is normalised to [0.0, 1.0].
 
-    Requires the ``system_prompt`` column in the dataset so it appears in
-    *kwargs* as a list of strings carrying each agent's priorities.
+    Requires the ``system_prompt`` and ``prompts`` columns in the dataset.
 
     Args:
-        completions: List of completions from the model. Each completion is
-            a list containing a single message dict with a ``"content"`` key.
-        **kwargs: Must contain ``"system_prompt"`` — a list of strings (one
-            per completion) with the agent's negotiation system prompt that
-            includes item priorities and point values.
+        completions: List of completions from the model.
+        **kwargs: Must contain ``"system_prompt"`` and ``"prompts"``.
 
     Returns:
         A list of float rewards in [0.0, 1.0], one per completion. Returns
@@ -159,6 +171,7 @@ def thought_judge_reward(completions, **kwargs) -> list[float]:
         )
 
     system_prompts: list[str] = kwargs.get("system_prompt", [])
+    prompts = kwargs.get("prompts", [])
     rewards: list[float] = []
 
     for i, completion in enumerate(completions):
@@ -174,6 +187,8 @@ def thought_judge_reward(completions, **kwargs) -> list[float]:
 
         action = extract_tag(text, "action") or "[TALK]"
         ctx = system_prompts[i] if i < len(system_prompts) else ""
+        prompt = prompts[i] if i < len(prompts) else []
+        conversation_context = _format_conversation_context(prompt)
 
         try:
             raw = _judge_call(
@@ -181,6 +196,7 @@ def thought_judge_reward(completions, **kwargs) -> list[float]:
                 system_prompt=THOUGHT_JUDGE_SYSTEM_PROMPT,
                 user_content=THOUGHT_JUDGE_USER_PROMPT.format(
                     system_prompt=ctx,
+                    conversation_context=conversation_context,
                     thought=thought,
                     action=action,
                 ),
@@ -307,6 +323,37 @@ def outcome_reward(completions, **kwargs) -> list[float]:
     return rewards
 
 
+def episode_reward(completions, **kwargs) -> list[float]:
+    """Reward every turn based on how the full episode ended.
+
+    Unlike ``outcome_reward`` which only fires on deal/accept/walk actions,
+    this propagates the episode result to ALL turns — including [TALK] turns
+    that otherwise receive zero signal from deal-specific rewards.
+
+    Uses ``episode_outcome`` and ``episode_learner_points`` metadata already
+    attached by ``SelfPlayGRPOTrainer.prepare_dataset``.
+
+    Returns:
+        Rewards in roughly [-0.5, 1.0] — normalized episode points for deals,
+        negative penalties for failed negotiations.
+    """
+    outcomes = kwargs.get("episode_outcome", [])
+    ep_points = kwargs.get("episode_learner_points", [])
+    rewards: list[float] = []
+    for i in range(len(completions)):
+        outcome = outcomes[i] if i < len(outcomes) else "max_turns"
+        pts = ep_points[i] if i < len(ep_points) else -1
+        if outcome == "deal" and pts > 0:
+            rewards.append(pts / 36.0)
+        elif outcome == "walk_away":
+            rewards.append(-0.5)
+        elif outcome == "reject_loop":
+            rewards.append(-0.3)
+        else:
+            rewards.append(-0.2)
+    return rewards
+
+
 def arithmetic_reward(completions, **kwargs) -> list[float]:
     """
     Reward that validates the arithmetic of ``[SUBMIT_DEAL]`` actions.
@@ -372,24 +419,20 @@ def arithmetic_reward(completions, **kwargs) -> list[float]:
 
 def points_reward(completions, **kwargs) -> list[float]:
     """
-    Reward proportional to the learner's points from deal actions.
+    Reward proportional to the learner's points from deal actions, with
+    discounted episode-outcome signal for non-deal turns.
 
-    Uses the per-item point values stored in the dataset (``food_points``,
-    ``water_points``, ``firewood_points``) and the opponent's last offer
-    (``last_opponent_offer``) to compute the learner's score.
-
-    For ``[SUBMIT_DEAL]``, the deal numbers are the learner's own allocation.
-    For ``[ACCEPT_DEAL]``, ``last_opponent_offer`` already contains the
-    learner's allocation (the deal was flipped to the learner's perspective
-    during episode generation).  The raw score is normalised to [0, 1] by
-    dividing by ``max_points`` (36).
-
-    Non-deal actions receive 0.0; ``[WALK_AWAY]`` receives -1.0.
+    For ``[SUBMIT_DEAL]`` and ``[ACCEPT_DEAL]``, computes the learner's
+    actual points from the deal. For ``[TALK]`` and ``[REJECT_DEAL]`` turns,
+    provides a discounted signal based on the episode's final outcome — later
+    turns receive stronger signal since they more directly influenced the
+    result.
 
     Args:
         completions: List of completions from the model.
         **kwargs: Must contain ``food_points``, ``water_points``,
-            ``firewood_points``, ``max_points``, and ``last_opponent_offer``
+            ``firewood_points``, ``max_points``, ``last_opponent_offer``,
+            ``episode_learner_points``, ``turn_index``, and ``total_turns``
             lists forwarded from the dataset columns.
 
     Returns:
@@ -400,6 +443,9 @@ def points_reward(completions, **kwargs) -> list[float]:
     fire_pts: list = kwargs.get("firewood_points", [])
     max_pts: list = kwargs.get("max_points", [])
     opponent_offers: list = kwargs.get("last_opponent_offer", [])
+    ep_points: list = kwargs.get("episode_learner_points", [])
+    turn_indices: list = kwargs.get("turn_index", [])
+    total_turns_list: list = kwargs.get("total_turns", [])
 
     rewards: list[float] = []
     for i, completion in enumerate(completions):
@@ -437,7 +483,15 @@ def points_reward(completions, **kwargs) -> list[float]:
 
         elif re.search(r"\[WALK_AWAY\]", action, re.IGNORECASE):
             rewards.append(-1.0)
+
         else:
-            rewards.append(0.0)
+            pts = ep_points[i] if i < len(ep_points) else -1
+            ti = turn_indices[i] if i < len(turn_indices) else 0
+            tt = total_turns_list[i] if i < len(total_turns_list) else 1
+            if pts > 0:
+                discount = ti / max(tt - 1, 1)
+                rewards.append((pts / 36.0) * discount * 0.5)
+            else:
+                rewards.append(0.0)
 
     return rewards

@@ -1,5 +1,7 @@
 """Fetch metrics from the Trackio HF Space and generate chart PNGs.
 
+Writes PNGs and ``charts_data.json`` under ``raw/charts/`` (gitignored).
+
 Usage:
     uv run scripts/download_charts.py
     uv run scripts/download_charts.py --run sft-0328-0839
@@ -26,7 +28,9 @@ import numpy as np
 
 PROJECT = "negotiation-agent"
 SPACE = "dhruvb26/negotiation-agent"
-ASSETS = Path(__file__).resolve().parent.parent / "assets"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+# Under raw/ (gitignored) so fetched charts and JSON are not committed.
+OUTPUT_ROOT = REPO_ROOT / "raw" / "charts"
 MAX_WORKERS = 12
 
 FONT_FAMILY = "Arial"
@@ -264,7 +268,7 @@ def run_group(group_name: str, group: dict, *, data_only: bool = False) -> dict:
     print(f"  {len(all_metrics)} metrics x {len(runs)} runs")
     by_metric = fetch_all_series(runs, all_metrics)
 
-    out_dir = ASSETS / group_name
+    out_dir = OUTPUT_ROOT / group_name
     saved = 0
     group_data: dict[str, list[dict]] = {}
     for metric in sorted(all_metrics):
@@ -308,13 +312,15 @@ def main() -> None:
     else:
         groups = RUN_GROUPS
 
+    OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+
     all_data: dict[str, dict] = {}
     for group_name, group in groups.items():
         all_data[group_name] = run_group(group_name, group, data_only=args.data_only)
 
-    out_json = ASSETS / "charts_data.json"
+    out_json = OUTPUT_ROOT / "charts_data.json"
     out_json.write_text(json.dumps(all_data, indent=2))
-    print(f"\nraw data saved to {out_json.relative_to(ASSETS.parent)}")
+    print(f"\nraw data saved to {out_json.relative_to(REPO_ROOT)}")
 
     print("done")
 
