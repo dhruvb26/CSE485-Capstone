@@ -49,6 +49,7 @@ SFT_METRICS = {
 GRPO_METRICS = {
     "entropy",
     "epoch",
+    "frac_reward_zero_std",
     "grad_norm",
     "kl",
     "learning_rate",
@@ -66,7 +67,6 @@ GRPO_SELFPLAY_SKIP_PREFIXES = {"turn/"}
 GRPO_ANNOTATED_SKIP = {"mean_token_accuracy"}
 
 GLOBAL_SKIP = {
-    "frac_reward_zero_std",
     "total_flos",
     "train_loss",
     "train_runtime",
@@ -116,6 +116,10 @@ RUN_GROUPS: dict[str, dict] = {
     },
     "grpo-selfplay-new": {
         "runs": ["grpo-self_play-0410-0625"],
+        "keep": _selfplay_keep,
+    },
+    "grpo-selfplay-temp12": {
+        "runs": ["grpo-self_play-0410-0811"],
         "keep": _selfplay_keep,
     },
 }
