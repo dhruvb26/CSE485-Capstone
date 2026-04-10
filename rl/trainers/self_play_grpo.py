@@ -21,9 +21,9 @@ from rl.prompts import build_system_prompt
 from rl.rewards import (
     arithmetic_reward,
     configure_judge,
-    episode_reward,
     format_reward,
     length_reward,
+    outcome_reward,
     points_reward,
     thought_judge_reward,
 )
@@ -455,7 +455,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
             gradient_checkpointing=cfg.gradient_checkpointing,
             bf16=cfg.bf16,
             report_to=cfg.report_to,
-            reward_weights=[0.5, 1.0, 0.5, 1.0, 2.0, 1.0],
+            reward_weights=[0.3, 3.0, 0.3, 0.5, 0.5, 1.0],
             **cfg.extra_kwargs,
         )
         peft_config = self._build_peft_config(cfg.lora)
@@ -469,7 +469,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                 thought_judge_reward,
                 format_reward,
                 arithmetic_reward,
-                episode_reward,
+                outcome_reward,
                 points_reward,
             ]
         ]

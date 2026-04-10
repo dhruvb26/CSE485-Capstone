@@ -394,7 +394,7 @@ def arithmetic_reward(completions, **kwargs) -> list[float]:
         action = extract_tag(text, "action")
 
         if action is None or not re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
-            rewards.append(0.5)
+            rewards.append(0.0)
             continue
 
         deal = parse_submit_deal(action)
@@ -419,20 +419,18 @@ def arithmetic_reward(completions, **kwargs) -> list[float]:
 
 def points_reward(completions, **kwargs) -> list[float]:
     """
-    Reward proportional to the learner's points from deal actions, with
-    discounted episode-outcome signal for non-deal turns.
+    Reward proportional to the learner's points from deal actions.
 
     For ``[SUBMIT_DEAL]`` and ``[ACCEPT_DEAL]``, computes the learner's
-    actual points from the deal. For ``[TALK]`` and ``[REJECT_DEAL]`` turns,
-    provides a discounted signal based on the episode's final outcome — later
-    turns receive stronger signal since they more directly influenced the
-    result.
+    actual points from the deal. For ``[WALK_AWAY]``, returns -1.0.
+    All other actions (``[TALK]``, ``[REJECT_DEAL]``) return 0.0 — episode-
+    level metadata is constant across a GRPO completion group and provides
+    no within-group variance for learning.
 
     Args:
         completions: List of completions from the model.
         **kwargs: Must contain ``food_points``, ``water_points``,
-            ``firewood_points``, ``max_points``, ``last_opponent_offer``,
-            ``episode_learner_points``, ``turn_index``, and ``total_turns``
+            ``firewood_points``, ``max_points``, and ``last_opponent_offer``
             lists forwarded from the dataset columns.
 
     Returns:
@@ -443,9 +441,6 @@ def points_reward(completions, **kwargs) -> list[float]:
     fire_pts: list = kwargs.get("firewood_points", [])
     max_pts: list = kwargs.get("max_points", [])
     opponent_offers: list = kwargs.get("last_opponent_offer", [])
-    ep_points: list = kwargs.get("episode_learner_points", [])
-    turn_indices: list = kwargs.get("turn_index", [])
-    total_turns_list: list = kwargs.get("total_turns", [])
 
     rewards: list[float] = []
     for i, completion in enumerate(completions):
@@ -485,13 +480,6 @@ def points_reward(completions, **kwargs) -> list[float]:
             rewards.append(-1.0)
 
         else:
-            pts = ep_points[i] if i < len(ep_points) else -1
-            ti = turn_indices[i] if i < len(turn_indices) else 0
-            tt = total_turns_list[i] if i < len(total_turns_list) else 1
-            if pts > 0:
-                discount = ti / max(tt - 1, 1)
-                rewards.append((pts / 36.0) * discount * 0.5)
-            else:
-                rewards.append(0.0)
+            rewards.append(0.0)
 
     return rewards
