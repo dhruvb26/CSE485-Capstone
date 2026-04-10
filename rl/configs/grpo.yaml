@@ -83,3 +83,4 @@ grpo:
     scale_rewards: false
     max_completion_length: 512
     max_grad_norm: 1.0
+    temperature: 1.2
