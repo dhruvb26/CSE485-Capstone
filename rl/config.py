@@ -104,6 +104,8 @@ class SelfPlayConfig:
     save_steps: int = 200
     save_total_limit: int | None = None
     max_steps: int = -1
+    dataset_cache_dir: str = ""
+    regenerate_dataset: bool = False
     gradient_checkpointing: bool = True
     bf16: bool = True
     report_to: str = "trackio"

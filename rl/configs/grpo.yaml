@@ -65,6 +65,7 @@ grpo:
   gradient_checkpointing: true
   bf16: true
   report_to: none
+  dataset_cache_dir: /scratch/dbansa11/data/capstone/selfplay-cache
   csv_path: data/casino/train.csv
   num_episodes: 800
   max_turns: 18

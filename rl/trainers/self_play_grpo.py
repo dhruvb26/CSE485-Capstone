@@ -316,11 +316,16 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         episode.opponent_messages = opponent_messages
         return episode
 
-    def prepare_dataset(self) -> Dataset:
+    def prepare_dataset(self, iteration: int = 0) -> Dataset:
         """Generate self-play episodes, then slice them into GRPO prompt examples.
 
+        If ``dataset_cache_dir`` is set, the generated dataset is saved to
+        ``{dataset_cache_dir}/iteration-{iteration}/`` after the first run and
+        loaded from there on subsequent runs.  Set ``regenerate_dataset=True``
+        to force re-generation even when a cache exists.
+
         Args:
-            None.
+            iteration: Current online iteration index (used for cache key).
 
         Returns:
             A dataset containing prompt prefixes and reward metadata.
@@ -330,6 +335,13 @@ class SelfPlayGRPOTrainer(BaseTrainer):
             Exception: If the scenario CSV cannot be read.
         """
         cfg = self.self_play_config
+
+        if cfg.dataset_cache_dir and not cfg.regenerate_dataset:
+            cache_path = os.path.join(cfg.dataset_cache_dir, f"iteration-{iteration}")
+            if os.path.isdir(cache_path):
+                logger.info(f"Loading cached dataset from {cache_path}")
+                return Dataset.load_from_disk(cache_path)
+
         scenarios: list[dict] = []
 
         try:
@@ -430,10 +442,18 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         if not rows:
             raise ValueError("No training samples produced from self-play episodes")
 
+        dataset = Dataset.from_list(rows)
         logger.info(
-            f"Built GRPO dataset: {len(rows)} per-turn samples from {len(episodes)} episodes"
+            f"Built GRPO dataset: {len(dataset)} per-turn samples from {len(episodes)} episodes"
         )
-        return Dataset.from_list(rows)
+
+        if cfg.dataset_cache_dir:
+            cache_path = os.path.join(cfg.dataset_cache_dir, f"iteration-{iteration}")
+            os.makedirs(cache_path, exist_ok=True)
+            dataset.save_to_disk(cache_path)
+            logger.info(f"Cached dataset to {cache_path}")
+
+        return dataset
 
     def build_trainer(self, train_dataset: Dataset) -> TurnTrackingGRPOTrainer:
         cfg = self.self_play_config
@@ -494,7 +514,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
         for iteration in range(cfg.num_online_iterations):
             logger.info(f"Online iteration {iteration + 1}/{cfg.num_online_iterations}")
 
-            dataset = self.prepare_dataset()
+            dataset = self.prepare_dataset(iteration=iteration)
             trainer = self.build_trainer(dataset)
 
             if iteration == 0 and resume_from:
