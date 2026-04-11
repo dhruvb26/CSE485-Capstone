@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections import defaultdict
 
 from datasets import Dataset
@@ -15,8 +16,10 @@ from rl.rewards import (
     format_reward,
     judge_reward,
     length_reward,
+    points_reward,
 )
 from rl.trainers.base import BaseTrainer
+from rl.utils import parse_submit_deal
 
 _turn_reward_buffer: dict[str, list[tuple[float, float]]] = defaultdict(list)
 
@@ -65,6 +68,21 @@ class TurnTrackingGRPOTrainer(GRPOTrainer):
         super().log(logs, *args, **kwargs)
 
 
+_ITEM_POINTS_RE = re.compile(
+    r"(food|water|firewood)\s*\([^)]*\):\s*\w+\s+priority\s*\((\d+)\s*pts",
+    re.IGNORECASE,
+)
+
+
+def _parse_point_map(system_prompt: str) -> dict[str, int]:
+    """Extract per-item point values from the system prompt.
+
+    Matches lines like ``Food (3 available): High priority (5 pts each)``.
+    Returns e.g. ``{"food": 5, "water": 4, "firewood": 3}``.
+    """
+    return {m.group(1).lower(): int(m.group(2)) for m in _ITEM_POINTS_RE.finditer(system_prompt)}
+
+
 class AnnotatedGRPOTrainer(BaseTrainer):
     """GRPO trainer that uses annotated conversations as ground-truth context."""
 
@@ -84,14 +102,15 @@ class AnnotatedGRPOTrainer(BaseTrainer):
     def prepare_dataset(self) -> Dataset:
         """Create GRPO prompts from annotated conversations.
 
-        Each row includes ``turn_index`` (0-based assistant-turn position) and
-        ``total_turns`` so reward analytics can split early vs. late turns.
+        Each row includes ``turn_index``, ``total_turns``, per-item point
+        values, ``max_points``, and ``last_opponent_offer`` so that
+        ``points_reward`` can score deal quality.
 
         Returns:
             A dataset with one ``prompt`` row per assistant turn after the split.
         """
         cfg = self.grpo_config
-        prompts: list[dict] = []
+        rows: list[dict] = []
 
         try:
             with open(cfg.data_path, encoding="utf-8") as file:
@@ -109,18 +128,38 @@ class AnnotatedGRPOTrainer(BaseTrainer):
                     system_prompt = messages[0]["content"] if messages else ""
                     split_at = max(1, int(total_turns * cfg.prompt_split))
 
+                    point_map = _parse_point_map(system_prompt)
+
                     for turn_pos, assistant_index in enumerate(
                         assistant_indices[split_at:], start=split_at
                     ):
                         prompt = messages[:assistant_index]
                         if not prompt or prompt[-1]["role"] != "user":
                             continue
-                        prompts.append(
+
+                        last_opponent_offer = None
+                        for msg in reversed(prompt):
+                            if msg["role"] != "user":
+                                continue
+                            last_opponent_offer = parse_submit_deal(msg["content"])
+                            if last_opponent_offer is not None:
+                                break
+
+                        rows.append(
                             {
                                 "prompt": prompt,
                                 "system_prompt": system_prompt,
                                 "turn_index": turn_pos,
                                 "total_turns": total_turns,
+                                "food_points": point_map.get("food", 3),
+                                "water_points": point_map.get("water", 3),
+                                "firewood_points": point_map.get("firewood", 3),
+                                "max_points": 36,
+                                "last_opponent_offer": (
+                                    json.dumps(last_opponent_offer)
+                                    if last_opponent_offer is not None
+                                    else "null"
+                                ),
                             }
                         )
         except Exception:
@@ -129,11 +168,11 @@ class AnnotatedGRPOTrainer(BaseTrainer):
             )
             raise
 
-        if not prompts:
+        if not rows:
             raise ValueError(f"No GRPO prompts generated from {cfg.data_path}")
 
-        logger.info(f"Built {len(prompts)} GRPO prompts from {cfg.data_path}")
-        return Dataset.from_list(prompts)
+        logger.info(f"Built {len(rows)} GRPO prompts from {cfg.data_path}")
+        return Dataset.from_list(rows)
 
     def build_trainer(self, train_dataset: Dataset) -> TurnTrackingGRPOTrainer:
         cfg = self.grpo_config
@@ -156,7 +195,7 @@ class AnnotatedGRPOTrainer(BaseTrainer):
             gradient_checkpointing=cfg.gradient_checkpointing,
             bf16=cfg.bf16,
             report_to=cfg.report_to,
-            reward_weights=[0.5, 1.0, 0.5],
+            reward_weights=[0.3, 1.5, 0.5, 1.0],
             **cfg.extra_kwargs,
         )
         peft_config = self._build_peft_config(cfg.lora)
@@ -169,6 +208,7 @@ class AnnotatedGRPOTrainer(BaseTrainer):
                 length_reward,
                 judge_reward,
                 format_reward,
+                points_reward,
             ]
         ]
 
