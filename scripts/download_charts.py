@@ -126,6 +126,10 @@ RUN_GROUPS: dict[str, dict] = {
         "runs": ["grpo-self_play-0410-0811"],
         "keep": _selfplay_keep,
     },
+    "grpo-selfplay-reward-v2": {
+        "runs": ["grpo-self_play-0410-2003"],
+        "keep": _selfplay_keep,
+    },
 }
 
 THEME = {
@@ -314,11 +318,14 @@ def main() -> None:
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
+    out_json = OUTPUT_ROOT / "charts_data.json"
     all_data: dict[str, dict] = {}
+    if out_json.exists():
+        all_data = json.loads(out_json.read_text())
+
     for group_name, group in groups.items():
         all_data[group_name] = run_group(group_name, group, data_only=args.data_only)
 
-    out_json = OUTPUT_ROOT / "charts_data.json"
     out_json.write_text(json.dumps(all_data, indent=2))
     print(f"\nraw data saved to {out_json.relative_to(REPO_ROOT)}")
 

@@ -11,11 +11,10 @@ from trl import GRPOConfig, GRPOTrainer
 from rl.callbacks import TrackioLoggingCallback
 from rl.config import GRPOTrainerConfig, ModelConfig
 from rl.rewards import (
-    arithmetic_reward,
     configure_judge,
     format_reward,
+    judge_reward,
     length_reward,
-    thought_judge_reward,
 )
 from rl.trainers.base import BaseTrainer
 
@@ -157,7 +156,7 @@ class AnnotatedGRPOTrainer(BaseTrainer):
             gradient_checkpointing=cfg.gradient_checkpointing,
             bf16=cfg.bf16,
             report_to=cfg.report_to,
-            reward_weights=[0.5, 1.0, 0.5, 2.0],
+            reward_weights=[0.5, 1.0, 0.5],
             **cfg.extra_kwargs,
         )
         peft_config = self._build_peft_config(cfg.lora)
@@ -168,9 +167,8 @@ class AnnotatedGRPOTrainer(BaseTrainer):
             _wrap_reward_with_turn_tracking(fn)
             for fn in [
                 length_reward,
-                thought_judge_reward,
+                judge_reward,
                 format_reward,
-                arithmetic_reward,
             ]
         ]
 

@@ -4,7 +4,7 @@ max_turns: 18
 temperature: 0.7
 top_p: 0.9
 seed: 42
-output_dir: logs/negotiate-2
+output_dir: logs/negotiate-0410-1
 
 persona_weights:
   uncompromising: 0.25
@@ -18,18 +18,18 @@ persona_weights:
 
 matchups:
   - learner:
-      label: grpo-selfplay
-      model_path: checkpoints/grpo-selfplay
+      label: grpo-selfplay-0410-2
+      model_path: checkpoints/grpo-selfplay-0410-2
       base_model: Qwen/Qwen2.5-7B-Instruct
     opponent:
-      label: grpo-annotated
-      model_path: checkpoints/grpo-annotated-2
+      label: grpo-annotated-0409-1
+      model_path: checkpoints/grpo-annotated-0409-1/checkpoint-600
       base_model: Qwen/Qwen2.5-7B-Instruct
 
   - learner:
       label: qwen-base
       model_path: Qwen/Qwen2.5-7B-Instruct
     opponent:
-      label: grpo-annotated
-      model_path: checkpoints/grpo-annotated-2
+      label: grpo-annotated-0409-1
+      model_path: checkpoints/grpo-annotated-0409-1/checkpoint-600
       base_model: Qwen/Qwen2.5-7B-Instruct

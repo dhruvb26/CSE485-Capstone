@@ -12,9 +12,8 @@ from tenacity import (
     wait_exponential,
 )
 
-from rl.prompts import THOUGHT_JUDGE_SYSTEM_PROMPT, THOUGHT_JUDGE_USER_PROMPT
+from rl.prompts import JUDGE_SYSTEM_PROMPT, JUDGE_USER_PROMPT
 from rl.utils import (
-    extract_discussed_deal,
     extract_tag,
     last_opponent_action_is_submit,
     parse_submit_deal,
@@ -145,25 +144,20 @@ def _format_conversation_context(prompt, max_turns: int = 3) -> str:
     return "\n".join(lines)
 
 
-def thought_judge_reward(completions, **kwargs) -> list[float]:
-    """
-    LLM-as-a-judge reward that evaluates the quality of the ``<thought>`` tag
-    using an OpenAI-compatible API (OpenAI, OpenRouter, etc.).
+def judge_reward(completions, **kwargs) -> list[float]:
+    """LLM-as-a-judge reward scoring thought quality and talk–action alignment.
 
-    Sends each completion's thought (and action, when present) along with the
-    agent's negotiation context and recent conversation history to a judge
-    model. The judge returns a 0-10 score which is normalised to [0.0, 1.0].
+    Sends each completion's ``<thought>``, ``<talk>``, and ``<action>`` along
+    with the agent's negotiation context and recent conversation history to a
+    judge model. The judge returns a 0-10 score (5 pts for thought quality,
+    5 pts for talk–action alignment) which is normalised to [0.0, 1.0].
 
     Requires the ``system_prompt`` and ``prompts`` columns in the dataset.
 
-    Args:
-        completions: List of completions from the model.
-        **kwargs: Must contain ``"system_prompt"`` and ``"prompts"``.
-
     Returns:
         A list of float rewards in [0.0, 1.0], one per completion. Returns
-        0.0 for completions missing a ``<thought>`` tag or when the API call
-        fails.
+        0.0 for completions missing ``<thought>`` or ``<talk>`` tags, or when
+        the API call fails.
     """
     if _judge_client is None:
         raise RuntimeError(
@@ -181,7 +175,8 @@ def thought_judge_reward(completions, **kwargs) -> list[float]:
             else str(completion)
         )
         thought = extract_tag(text, "thought")
-        if thought is None:
+        talk = extract_tag(text, "talk")
+        if thought is None or talk is None:
             rewards.append(0.0)
             continue
 
@@ -193,11 +188,12 @@ def thought_judge_reward(completions, **kwargs) -> list[float]:
         try:
             raw = _judge_call(
                 _judge_client,
-                system_prompt=THOUGHT_JUDGE_SYSTEM_PROMPT,
-                user_content=THOUGHT_JUDGE_USER_PROMPT.format(
+                system_prompt=JUDGE_SYSTEM_PROMPT,
+                user_content=JUDGE_USER_PROMPT.format(
                     system_prompt=ctx,
                     conversation_context=conversation_context,
                     thought=thought,
+                    talk=talk,
                     action=action,
                 ),
             )
@@ -263,7 +259,10 @@ def format_reward(completions, **kwargs) -> list[float]:
 
         action_valid = False
         if re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
-            action_valid = parse_submit_deal(action) is not None
+            deal = parse_submit_deal(action)
+            action_valid = (
+                deal is not None and all(0 <= v <= 3 for v in deal.values())
+            )
         elif re.compile(
             r"^\s*\[(TALK|ACCEPT_DEAL|REJECT_DEAL|WALK_AWAY)\]\s*$", re.IGNORECASE
         ).match(action):
@@ -277,155 +276,23 @@ def format_reward(completions, **kwargs) -> list[float]:
     return rewards
 
 
-def outcome_reward(completions, **kwargs) -> list[float]:
-    """
-    Completion-level reward based on the agent's selected action.
-
-    This function inspects each completion's ``<action>...</action>`` tag
-    directly (instead of using episode-level outcome metadata from
-    ``prepare_dataset``).
-
-    Upweighted ~2.5x relative to other rewards since this is the only signal
-    capturing whether the negotiation actually succeeded:
-      - ``[ACCEPT_DEAL]``: ``1.25``
-      - ``[SUBMIT_DEAL]`` but not ``[ACCEPT_DEAL]``: ``0.5``
-      - ``[WALK_AWAY]``: ``-1.25``
-      - ``[TALK]`` or any other action (or missing ``<action>`` tag): ``0.0``
-
-    Args:
-        completions: List of completions from the model.
-        **kwargs: Unused (kept for GRPOTrainer compatibility).
-
-    Returns:
-        A list of float rewards, one per completion.
-    """
-    rewards: list[float] = []
-    for completion in completions:
-        text = (
-            completion[0]["content"]
-            if isinstance(completion, list)
-            else str(completion)
-        )
-        action = extract_tag(text, "action")
-        if action is None:
-            rewards.append(0.0)
-            continue
-
-        if re.search(r"\[ACCEPT_DEAL\]", action, re.IGNORECASE):
-            rewards.append(1.25)
-        elif re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
-            rewards.append(0.5)
-        elif re.search(r"\[WALK_AWAY\]", action, re.IGNORECASE):
-            rewards.append(-1.25)
-        else:
-            rewards.append(0.0)
-
-    return rewards
-
-
-def episode_reward(completions, **kwargs) -> list[float]:
-    """Reward every turn based on how the full episode ended.
-
-    Unlike ``outcome_reward`` which only fires on deal/accept/walk actions,
-    this propagates the episode result to ALL turns — including [TALK] turns
-    that otherwise receive zero signal from deal-specific rewards.
-
-    Uses ``episode_outcome`` and ``episode_learner_points`` metadata already
-    attached by ``SelfPlayGRPOTrainer.prepare_dataset``.
-
-    Returns:
-        Rewards in roughly [-0.5, 1.0] — normalized episode points for deals,
-        negative penalties for failed negotiations.
-    """
-    outcomes = kwargs.get("episode_outcome", [])
-    ep_points = kwargs.get("episode_learner_points", [])
-    rewards: list[float] = []
-    for i in range(len(completions)):
-        outcome = outcomes[i] if i < len(outcomes) else "max_turns"
-        pts = ep_points[i] if i < len(ep_points) else -1
-        if outcome == "deal" and pts > 0:
-            rewards.append(pts / 36.0)
-        elif outcome == "walk_away":
-            rewards.append(-0.5)
-        elif outcome == "reject_loop":
-            rewards.append(-0.3)
-        else:
-            rewards.append(-0.2)
-    return rewards
-
-
-def arithmetic_reward(completions, **kwargs) -> list[float]:
-    """
-    Reward that validates the arithmetic of ``[SUBMIT_DEAL]`` actions.
-
-    Performs two checks:
-
-    1. **Range check** — every item value must be in [0, 3].
-    2. **Consistency check** — the submitted deal must match the most recently
-       discussed deal in the conversation.  The discussed deal is extracted
-       from (a) the last ``<thought>`` tag with explicit ``N item x M pts``
-       arithmetic for all three items, or (b) the last ``[SUBMIT_DEAL]`` in
-       assistant-role messages only (so opponent deals are not mistaken for
-       the learner's intent).  If no prior deal can be determined the check
-       is skipped.
-
-    Completions without a ``[SUBMIT_DEAL]`` action receive a neutral 0.5.
-    Malformed or inconsistent deals receive -0.5.
-
-    Args:
-        completions: List of completions from the model. Each completion is
-            a list containing a single message dict with a ``"content"`` key.
-        **kwargs: Additional keyword arguments forwarded by GRPOTrainer.
-            ``prompts`` (list) is used for the conversation consistency check.
-
-    Returns:
-        A list of float rewards, one per completion. 1.0 for valid and
-        consistent deals, -0.5 for invalid/inconsistent deals, 0.5 for
-        non-deal actions.
-    """
-    prompts = kwargs.get("prompts", [])
-    rewards: list[float] = []
-    for i, completion in enumerate(completions):
-        text = (
-            completion[0]["content"]
-            if isinstance(completion, list)
-            else str(completion)
-        )
-        action = extract_tag(text, "action")
-
-        if action is None or not re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
-            rewards.append(0.0)
-            continue
-
-        deal = parse_submit_deal(action)
-        if deal is None:
-            rewards.append(-0.5)
-            continue
-
-        if not all(0 <= v <= 3 for v in deal.values()):
-            rewards.append(-0.5)
-            continue
-
-        prompt = prompts[i] if i < len(prompts) else ""
-        discussed = extract_discussed_deal(prompt)
-        if discussed is not None and discussed != deal:
-            rewards.append(-0.5)
-            continue
-
-        rewards.append(1.0)
-
-    return rewards
+def _compute_points(alloc: dict, food_pts: int, water_pts: int, firewood_pts: int) -> int:
+    """Dot-product of an item allocation with the learner's per-item point values."""
+    return (
+        alloc["food"] * food_pts
+        + alloc["water"] * water_pts
+        + alloc["firewood"] * firewood_pts
+    )
 
 
 def points_reward(completions, **kwargs) -> list[float]:
-    """
-    Reward proportional to the learner's points from deal actions.
+    """Reward that incentivises the learner to maximise its own points.
 
-    For ``[SUBMIT_DEAL]`` and ``[ACCEPT_DEAL]``, computes the learner's
-    actual points from the deal. For ``[WALK_AWAY]``, returns -1.0.
-    All other actions (``[TALK]``, ``[REJECT_DEAL]``) return 0.0 — episode-
-    level metadata is constant across a GRPO completion group and provides
-    no within-group variance for learning.
+    For deal actions (``[SUBMIT_DEAL]``, ``[ACCEPT_DEAL]``), the reward is
+    the learner's normalised score: ``points / max_points``, scaled to
+    ``[-0.5, 1.5]`` so that bad deals are penalised and good deals are
+    strongly rewarded.  ``[WALK_AWAY]`` yields ``-1.0`` (no points at all).
+    All other actions return ``0.0``.
 
     Args:
         completions: List of completions from the model.
@@ -454,29 +321,30 @@ def points_reward(completions, **kwargs) -> list[float]:
             rewards.append(0.0)
             continue
 
+        action_upper = action.upper()
         fp = food_pts[i] if i < len(food_pts) else 3
         wp = water_pts[i] if i < len(water_pts) else 3
         fwp = fire_pts[i] if i < len(fire_pts) else 3
         mp = max_pts[i] if i < len(max_pts) else 36
 
-        if re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
+        if "[SUBMIT_DEAL]" in action_upper:
             deal = parse_submit_deal(action)
             if deal is None:
                 rewards.append(0.0)
                 continue
-            score = deal["food"] * fp + deal["water"] * wp + deal["firewood"] * fwp
-            rewards.append((score / mp) * 2.0 - 0.5)
+            points = _compute_points(deal, fp, wp, fwp)
+            rewards.append((points / mp) * 2.0 - 0.5)
 
-        elif re.search(r"\[ACCEPT_DEAL\]", action, re.IGNORECASE):
-            raw = opponent_offers[i] if i < len(opponent_offers) else "null"
+        elif "[ACCEPT_DEAL]" in action_upper:
+            raw = opponent_offers[i] if i < len(opponent_offers) else None
             alloc = json.loads(raw) if isinstance(raw, str) else raw
-            if alloc is None:
+            if not isinstance(alloc, dict):
                 rewards.append(0.0)
                 continue
-            score = alloc["food"] * fp + alloc["water"] * wp + alloc["firewood"] * fwp
-            rewards.append((score / mp) * 2.0 - 0.5)
+            points = _compute_points(alloc, fp, wp, fwp)
+            rewards.append((points / mp) * 2.0 - 0.5)
 
-        elif re.search(r"\[WALK_AWAY\]", action, re.IGNORECASE):
+        elif "[WALK_AWAY]" in action_upper:
             rewards.append(-1.0)
 
         else:

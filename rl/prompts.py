@@ -111,34 +111,41 @@ Your response must contain ONLY the <text> tag:
 <text>your opening message here</text>"""
 
 
-THOUGHT_JUDGE_SYSTEM_PROMPT = """\
-You are evaluating the quality of strategic thinking in a camping-supply negotiation. \
+JUDGE_SYSTEM_PROMPT = """\
+You are evaluating a single turn in a camping-supply negotiation. \
 Two neighbors are dividing 3 packages each of food, water, and firewood (9 items total). \
 Each party has different priority rankings (High/Medium/Low) for the three item types.
 
 You will be given the agent's priorities, the recent conversation history, and the \
-agent's current thought and action. Score the <thought> tag on a 0-10 scale based on:
+agent's current <thought>, <talk>, and <action>. Score the turn on a 0-10 scale based on:
 
+THOUGHT QUALITY (0-5 points):
 - Contextual reasoning: Does the thought respond to what the opponent just said or \
 proposed? A good thought references and reacts to the opponent's latest message.
 - Strategic coherence: Does the reasoning reflect the agent's own priorities and form \
 a clear plan for advancing toward a favorable deal?
 - Opponent modeling: Does it infer the opponent's preferences or satisfaction from \
-what they have said? Adapting strategy based on opponent behavior is critical.
-- Action justification: Does the thought logically support the chosen action given \
-the current conversation state?
+what they have said?
 
-The importance of each criterion is stage-dependent. Early in the negotiation, probing \
+TALK-ACTION ALIGNMENT (0-5 points):
+- Semantic consistency: Does the <talk> match the <action>? If the agent says \
+"I'll take 3 food" but submits food:1, that is a mismatch. If the agent says \
+"deal!" but the action is [REJECT_DEAL], that is a mismatch.
+- For [SUBMIT_DEAL]: the allocation described in <talk> must match the numbers in \
+the action. The deal values are the agent's OWN allocation (neighbor gets 3 minus each).
+- For [ACCEPT_DEAL]: <talk> should indicate agreement. For [WALK_AWAY]: <talk> should \
+indicate the agent is ending the negotiation.
+- For [TALK]: <talk> should be a natural conversational continuation consistent with \
+the thought's strategy.
+- Arithmetic in <thought> must be consistent with the [SUBMIT_DEAL] values when present.
+
+The importance of thought criteria is stage-dependent. Early in the negotiation, probing \
 the opponent's needs and anchoring matter most. When finalizing a deal, confirming that \
-the opponent will accept and locking in the agreement matters most.
-
-For [SUBMIT_DEAL] actions, the deal specifies the agent's OWN allocation (the neighbor \
-receives the remainder, i.e. 3 minus each value). Check that the proposed allocation is \
-consistent with the arithmetic and strategic reasoning in the thought.
+the opponent will accept matters most.
 
 Respond with ONLY a JSON object, no other text: {{"score": N}}"""
 
-THOUGHT_JUDGE_USER_PROMPT = """\
+JUDGE_USER_PROMPT = """\
 Agent's negotiation instructions and priorities:
 {system_prompt}
 
@@ -148,10 +155,13 @@ Recent conversation:
 Agent's internal thought:
 <thought>{thought}</thought>
 
+Agent's spoken message:
+<talk>{talk}</talk>
+
 Agent's chosen action (if [SUBMIT_DEAL], values are the agent's own allocation out of 3):
 <action>{action}</action>
 
-Rate the thought quality (0-10)."""
+Rate this turn (0-10)."""
 
 
 def build_system_prompt(participant_info: dict, agent_id: str) -> str:
