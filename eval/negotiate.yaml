@@ -4,7 +4,7 @@ max_turns: 18
 temperature: 0.7
 top_p: 0.9
 seed: 42
-output_dir: logs/negotiate-0411-1
+output_dir: logs/negotiate-0412-1
 
 persona_weights:
   uncompromising: 0.25

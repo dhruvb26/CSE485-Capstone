@@ -123,15 +123,37 @@ class AggregateMetrics:
             self.max_turns_count += 1
 
     def summary(self) -> dict:
+        import math
+
         n = max(self.total_episodes, 1)
         deals = self.learner_points_on_deals
+        opp_deals = self.opponent_points_on_deals
 
         avg_lp = sum(deals) / len(deals) if deals else None
-        avg_op = (
-            sum(self.opponent_points_on_deals) / len(self.opponent_points_on_deals)
-            if self.opponent_points_on_deals
-            else None
+        avg_op = sum(opp_deals) / len(opp_deals) if opp_deals else None
+
+        joint_scores = [
+            lp + op for lp, op in zip(deals, opp_deals)
+        ]
+        avg_joint = (
+            round(sum(joint_scores) / len(joint_scores), 2) if joint_scores else None
         )
+
+        score_ratios = [
+            lp / (lp + op) if (lp + op) > 0 else 0.5
+            for lp, op in zip(deals, opp_deals)
+        ]
+        avg_score_ratio = (
+            round(sum(score_ratios) / len(score_ratios), 3) if score_ratios else None
+        )
+
+        if len(deals) >= 2:
+            mean_lp = sum(deals) / len(deals)
+            var_lp = sum((x - mean_lp) ** 2 for x in deals) / (len(deals) - 1)
+            std_learner_points = round(math.sqrt(var_lp), 2)
+        else:
+            std_learner_points = None
+
         avg_turns_deal = (
             sum(self.turns_on_deals) / len(self.turns_on_deals)
             if self.turns_on_deals
@@ -153,6 +175,9 @@ class AggregateMetrics:
             "max_turns_rate": self.max_turns_count / n,
             "avg_learner_points": round(avg_lp, 2) if avg_lp is not None else None,
             "avg_opponent_points": round(avg_op, 2) if avg_op is not None else None,
+            "std_learner_points": std_learner_points,
+            "avg_joint_score": avg_joint,
+            "avg_score_ratio": avg_score_ratio,
             "avg_turns_to_deal": round(avg_turns_deal, 2)
             if avg_turns_deal is not None
             else None,
@@ -560,7 +585,9 @@ def run_evaluation(cfg: dict) -> dict:
         elapsed = time.time() - t0
         logger.info(f"Finished {matchup_name} in {elapsed:.1f}s")
 
-        per_persona_summaries = {p: m.summary() for p, m in sorted(per_persona.items())}
+        per_persona_summaries = {
+            p: m.summary() for p, m in sorted(per_persona.items())
+        }
         matchup_summary = {
             "matchup": matchup_name,
             "learner": learner_cfg["label"],
@@ -646,8 +673,10 @@ def _print_matchup_report(summary: dict):
         f"  Reject-loop rate:  {o['reject_loop_rate']:.1%}  ({o['reject_loop_count']})"
     )
     print(f"  Max-turns rate:    {o['max_turns_rate']:.1%}  ({o['max_turns_count']})")
-    print(f"  Avg learner pts:   {o['avg_learner_points']}")
+    print(f"  Avg learner pts:   {o['avg_learner_points']}  (std {o['std_learner_points']})")
     print(f"  Avg opponent pts:  {o['avg_opponent_points']}")
+    print(f"  Avg joint score:   {o['avg_joint_score']}")
+    print(f"  Avg score ratio:   {o['avg_score_ratio']}")
     print(f"  Avg turns (deal):  {o['avg_turns_to_deal']}")
     print(f"  Avg turns (all):   {o['avg_turns_all']}")
     print(f"  Points/turn:       {o['points_per_turn']}")
@@ -659,12 +688,16 @@ def _print_matchup_report(summary: dict):
     print()
 
     for persona, pm in summary["per_persona"].items():
+        sr = pm['avg_score_ratio']
+        sr_str = f"{sr:.2f}" if sr is not None else "—"
+        js = pm['avg_joint_score']
+        js_str = f"{js:.1f}" if js is not None else "—"
         print(
             f"  [{persona}]  deal={pm['deal_rate']:.0%}  "
             f"learner_pts={pm['avg_learner_points']}  "
             f"opp_pts={pm['avg_opponent_points']}  "
+            f"ratio={sr_str}  joint={js_str}  "
             f"turns={pm['avg_turns_to_deal']}  "
-            f"ppt={pm['points_per_turn']}  "
             f"fmt={pm['learner_format_rate']:.0%}  "
             f"(n={pm['total_episodes']})"
         )
@@ -677,10 +710,10 @@ def _print_comparison_table(all_summaries: dict):
 
     header_fields = [
         "deal_rate",
-        "walk_away_rate",
-        "reject_loop_rate",
         "avg_learner_points",
         "avg_opponent_points",
+        "avg_joint_score",
+        "avg_score_ratio",
         "avg_turns_to_deal",
         "points_per_turn",
         "learner_format_rate",
