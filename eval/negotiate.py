@@ -5,6 +5,7 @@ import csv
 import json
 import os
 import random
+import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from rl.prompts import build_system_prompt
 from rl.utils import (
     extract_tag,
     flip_deal_perspective,
+    last_opponent_action_is_submit,
     parse_submit_deal,
     strip_thought,
 )
@@ -325,20 +327,51 @@ def run_episode(
             )
 
         thought = extract_tag(response, "thought")
+        talk = extract_tag(response, "talk")
         action = extract_tag(response, "action")
-        has_valid_format = thought is not None and action is not None
+
+        format_ok = False
+        malformed_deal = False
+        if thought is not None and talk is not None and action is not None:
+            try:
+                order_ok = (
+                    response.index("<thought>")
+                    < response.index("<talk>")
+                    < response.index("<action>")
+                )
+            except ValueError:
+                order_ok = False
+
+            if order_ok:
+                if re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
+                    deal = parse_submit_deal(action)
+                    format_ok = deal is not None and all(
+                        0 <= v <= 3 for v in deal.values()
+                    )
+                    if not format_ok:
+                        malformed_deal = True
+                elif re.fullmatch(
+                    r"\s*\[(TALK|ACCEPT_DEAL|REJECT_DEAL|WALK_AWAY)\]\s*",
+                    action,
+                    re.IGNORECASE,
+                ):
+                    if re.search(r"\[ACCEPT_DEAL\]", action, re.IGNORECASE):
+                        msgs = learner_msgs if is_learner_turn else opponent_msgs
+                        format_ok = last_opponent_action_is_submit(msgs)
+                    else:
+                        format_ok = True
 
         if is_learner_turn:
             result.learner_total_turns += 1
-            if has_valid_format:
+            if format_ok:
                 result.learner_format_ok += 1
-            if action and "[SUBMIT_DEAL]" in action and parse_submit_deal(action) is None:
+            if malformed_deal:
                 result.learner_malformed_deals += 1
         else:
             result.opponent_total_turns += 1
-            if has_valid_format:
+            if format_ok:
                 result.opponent_format_ok += 1
-            if action and "[SUBMIT_DEAL]" in action and parse_submit_deal(action) is None:
+            if malformed_deal:
                 result.opponent_malformed_deals += 1
 
         if action:
