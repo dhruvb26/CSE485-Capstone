@@ -4,7 +4,7 @@ max_turns: 18
 temperature: 0.7
 top_p: 0.9
 seed: 42
-output_dir: logs/negotiate-0410-1
+output_dir: logs/negotiate-0411-1
 
 persona_weights:
   uncompromising: 0.25
@@ -12,24 +12,42 @@ persona_weights:
   anchoring: 0.25
   cooperative: 0.25
 
-# Each matchup runs num_episodes with the specified learner vs opponent.
-# The A/B comparison: trained checkpoint as learner vs base Qwen as learner,
-# both playing against the same opponents.
-
 matchups:
+  # GRPO cp1200 as learner vs SFT opponent
   - learner:
-      label: grpo-selfplay-0410-2
-      model_path: checkpoints/grpo-selfplay-0410-2
+      label: grpo-annotated-cp1200
+      model_path: checkpoints/grpo-annotated-0411-1/checkpoint-1200
       base_model: Qwen/Qwen2.5-7B-Instruct
     opponent:
-      label: grpo-annotated-0409-1
-      model_path: checkpoints/grpo-annotated-0409-1/checkpoint-600
+      label: sft-tuned-2
+      model_path: checkpoints/sft-tuned-2
       base_model: Qwen/Qwen2.5-7B-Instruct
 
+  # Flipped: SFT as learner vs GRPO cp1200 opponent
+  - learner:
+      label: sft-tuned-2
+      model_path: checkpoints/sft-tuned-2
+      base_model: Qwen/Qwen2.5-7B-Instruct
+    opponent:
+      label: grpo-annotated-cp1200
+      model_path: checkpoints/grpo-annotated-0411-1/checkpoint-1200
+      base_model: Qwen/Qwen2.5-7B-Instruct
+
+  # Control: SFT vs SFT
+  - learner:
+      label: sft-tuned-2
+      model_path: checkpoints/sft-tuned-2
+      base_model: Qwen/Qwen2.5-7B-Instruct
+    opponent:
+      label: sft-tuned-2
+      model_path: checkpoints/sft-tuned-2
+      base_model: Qwen/Qwen2.5-7B-Instruct
+
+  # Reference: Qwen base vs SFT
   - learner:
       label: qwen-base
       model_path: Qwen/Qwen2.5-7B-Instruct
     opponent:
-      label: grpo-annotated-0409-1
-      model_path: checkpoints/grpo-annotated-0409-1/checkpoint-600
+      label: sft-tuned-2
+      model_path: checkpoints/sft-tuned-2
       base_model: Qwen/Qwen2.5-7B-Instruct

@@ -45,6 +45,8 @@ grpo:
     scale_rewards: false
     max_completion_length: 512
 
+resume_from: checkpoints/grpo-annotated-0411-1/checkpoint-800
+
 # grpo:
 #   checkpoint: checkpoints/grpo-annotated-0411-1/checkpoint-600
 #   opponent_checkpoint: checkpoints/grpo-annotated-0411-1/checkpoint-600

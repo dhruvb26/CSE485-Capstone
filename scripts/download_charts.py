@@ -130,6 +130,10 @@ RUN_GROUPS: dict[str, dict] = {
         "runs": ["grpo-self_play-0410-2003"],
         "keep": _selfplay_keep,
     },
+    "grpo-annotated-points": {
+        "runs": ["grpo-annotated-0411-0808"],
+        "keep": _annotated_keep,
+    },
 }
 
 THEME = {

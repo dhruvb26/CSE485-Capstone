@@ -67,6 +67,12 @@ class EpisodeResult:
     learner_agent_id: str = ""
     opponent_agent_id: str = ""
     who_terminated: str = ""  # learner | opponent
+    learner_total_turns: int = 0
+    learner_format_ok: int = 0
+    learner_malformed_deals: int = 0
+    opponent_total_turns: int = 0
+    opponent_format_ok: int = 0
+    opponent_malformed_deals: int = 0
 
 
 @dataclass
@@ -82,9 +88,23 @@ class AggregateMetrics:
     turns_on_deals: list[int] = field(default_factory=list)
     all_turns: list[int] = field(default_factory=list)
 
+    learner_total_turns: int = 0
+    learner_format_ok: int = 0
+    learner_malformed_deals: int = 0
+    opponent_total_turns: int = 0
+    opponent_format_ok: int = 0
+    opponent_malformed_deals: int = 0
+
     def add(self, ep: EpisodeResult):
         self.total_episodes += 1
         self.all_turns.append(ep.num_turns)
+
+        self.learner_total_turns += ep.learner_total_turns
+        self.learner_format_ok += ep.learner_format_ok
+        self.learner_malformed_deals += ep.learner_malformed_deals
+        self.opponent_total_turns += ep.opponent_total_turns
+        self.opponent_format_ok += ep.opponent_format_ok
+        self.opponent_malformed_deals += ep.opponent_malformed_deals
 
         if ep.outcome == "deal":
             self.deal_count += 1
@@ -120,6 +140,9 @@ class AggregateMetrics:
         )
         ppt = avg_lp / avg_turns_deal if (avg_lp and avg_turns_deal) else None
 
+        lt = max(self.learner_total_turns, 1)
+        ot = max(self.opponent_total_turns, 1)
+
         return {
             "total_episodes": self.total_episodes,
             "deal_rate": self.deal_count / n,
@@ -139,6 +162,12 @@ class AggregateMetrics:
             "walk_away_count": self.walk_away_count,
             "reject_loop_count": self.reject_loop_count,
             "max_turns_count": self.max_turns_count,
+            "learner_format_rate": round(self.learner_format_ok / lt, 3),
+            "learner_malformed_deal_rate": round(self.learner_malformed_deals / lt, 3),
+            "opponent_format_rate": round(self.opponent_format_ok / ot, 3),
+            "opponent_malformed_deal_rate": round(self.opponent_malformed_deals / ot, 3),
+            "learner_total_turns": self.learner_total_turns,
+            "opponent_total_turns": self.opponent_total_turns,
         }
 
 
@@ -295,7 +324,23 @@ def run_episode(
                 }
             )
 
+        thought = extract_tag(response, "thought")
         action = extract_tag(response, "action")
+        has_valid_format = thought is not None and action is not None
+
+        if is_learner_turn:
+            result.learner_total_turns += 1
+            if has_valid_format:
+                result.learner_format_ok += 1
+            if action and "[SUBMIT_DEAL]" in action and parse_submit_deal(action) is None:
+                result.learner_malformed_deals += 1
+        else:
+            result.opponent_total_turns += 1
+            if has_valid_format:
+                result.opponent_format_ok += 1
+            if action and "[SUBMIT_DEAL]" in action and parse_submit_deal(action) is None:
+                result.opponent_malformed_deals += 1
+
         if action:
             parsed_deal = parse_submit_deal(action)
             if parsed_deal is not None:
@@ -514,6 +559,12 @@ def run_evaluation(cfg: dict) -> dict:
                     "who_terminated": ep.who_terminated,
                     "learner_agent_id": ep.learner_agent_id,
                     "opponent_agent_id": ep.opponent_agent_id,
+                    "learner_format_ok": ep.learner_format_ok,
+                    "learner_total_turns": ep.learner_total_turns,
+                    "learner_malformed_deals": ep.learner_malformed_deals,
+                    "opponent_format_ok": ep.opponent_format_ok,
+                    "opponent_total_turns": ep.opponent_total_turns,
+                    "opponent_malformed_deals": ep.opponent_malformed_deals,
                     "learner_messages": ep.learner_messages,
                     "opponent_messages": ep.opponent_messages,
                 }
@@ -568,6 +619,11 @@ def _print_matchup_report(summary: dict):
     print(f"  Avg turns (all):   {o['avg_turns_all']}")
     print(f"  Points/turn:       {o['points_per_turn']}")
     print()
+    print(f"  Learner format:    {o['learner_format_rate']:.1%}  ({o['learner_total_turns']} turns)")
+    print(f"  Learner bad deals: {o['learner_malformed_deal_rate']:.1%}")
+    print(f"  Opponent format:   {o['opponent_format_rate']:.1%}  ({o['opponent_total_turns']} turns)")
+    print(f"  Opponent bad deals:{o['opponent_malformed_deal_rate']:.1%}")
+    print()
 
     for persona, pm in summary["per_persona"].items():
         print(
@@ -576,6 +632,7 @@ def _print_matchup_report(summary: dict):
             f"opp_pts={pm['avg_opponent_points']}  "
             f"turns={pm['avg_turns_to_deal']}  "
             f"ppt={pm['points_per_turn']}  "
+            f"fmt={pm['learner_format_rate']:.0%}  "
             f"(n={pm['total_episodes']})"
         )
     print()
@@ -593,6 +650,7 @@ def _print_comparison_table(all_summaries: dict):
         "avg_opponent_points",
         "avg_turns_to_deal",
         "points_per_turn",
+        "learner_format_rate",
     ]
     col_w = 16
 
