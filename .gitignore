@@ -29,3 +29,6 @@ checkpoints/
 # Slurm .out files
 *.out
 raw/
+
+# Agents
+CLAUDE.md

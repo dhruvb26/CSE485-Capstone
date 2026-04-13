@@ -1,11 +1,10 @@
-"""Fetch metrics from the Trackio HF Space and generate chart PNGs.
+"""Fetch metrics from Trackio and generate chart PNGs.
 
 Writes PNGs and ``charts_data.json`` under ``raw/charts/`` (gitignored).
 
 Usage:
     uv run scripts/download_charts.py
-    uv run scripts/download_charts.py --run sft-0328-0839
-    uv run scripts/download_charts.py --light
+    uv run scripts/download_charts.py --run grpo-annotated
     uv run scripts/download_charts.py --data-only
 """
 
@@ -16,39 +15,21 @@ import json
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
 
 PROJECT = "negotiation-agent"
 SPACE = "dhruvb26/negotiation-agent"
 REPO_ROOT = Path(__file__).resolve().parent.parent
-# Under raw/ (gitignored) so fetched charts and JSON are not committed.
 OUTPUT_ROOT = REPO_ROOT / "raw" / "charts"
 MAX_WORKERS = 12
 
-FONT_FAMILY = "Arial"
-try:
-    fm.findfont(fm.FontProperties(family=FONT_FAMILY), fallback_to_default=False)
-except ValueError:
-    FONT_FAMILY = "Helvetica"
-plt.rcParams["font.family"] = FONT_FAMILY
-
-SFT_METRICS = {
-    "entropy",
-    "epoch",
-    "grad_norm",
-    "learning_rate",
-    "loss",
-    "mean_token_accuracy",
-    "num_tokens",
-}
+plt.rcParams["font.family"] = "Arial"
 
 GRPO_METRICS = {
     "entropy",
@@ -63,14 +44,10 @@ GRPO_METRICS = {
     "reward_std",
     "step_time",
 }
-GRPO_PREFIXES = {"clip_ratio/", "completions/", "rewards/"}
+GRPO_PREFIXES = ("clip_ratio/", "completions/", "rewards/")
 
-GRPO_SELFPLAY_SKIP = {"completions/clipped_ratio", "mean_token_accuracy"}
-GRPO_SELFPLAY_SKIP_PREFIXES = {"turn/"}
-
-GRPO_ANNOTATED_SKIP = {"mean_token_accuracy"}
-
-GLOBAL_SKIP = {
+SKIP = {
+    "mean_token_accuracy",
     "total_flos",
     "train_loss",
     "train_runtime",
@@ -78,99 +55,45 @@ GLOBAL_SKIP = {
     "train_steps_per_second",
 }
 
-
-def _grpo_match(name: str) -> bool:
-    return name in GRPO_METRICS or any(name.startswith(p) for p in GRPO_PREFIXES)
-
-
-def _selfplay_keep(name: str) -> bool:
-    if name in GLOBAL_SKIP or name in GRPO_SELFPLAY_SKIP:
-        return False
-    if any(name.startswith(p) for p in GRPO_SELFPLAY_SKIP_PREFIXES):
-        return False
-    return _grpo_match(name)
-
-
-def _annotated_keep(name: str) -> bool:
-    if name in GLOBAL_SKIP or name in GRPO_ANNOTATED_SKIP:
-        return False
-    return _grpo_match(name) or name.startswith("turn/")
-
-
-def _sft_keep(name: str) -> bool:
-    return name in SFT_METRICS
-
-
-RUN_GROUPS: dict[str, dict] = {
-    "sft": {
-        "runs": ["sft-0328-0839"],
-        "keep": _sft_keep,
+RUN_GROUPS = {
+    "grpo-annotated": {
+        "runs": ["grpo-annotated-0411-0808", "grpo-annotated-0411-1746"],
+        "extra_prefixes": ("turn/",),
     },
     "grpo-selfplay": {
-        "runs": ["grpo-self_play-0329-2116"],
-        "keep": _selfplay_keep,
-    },
-    "grpo-annotated-combined": {
-        "runs": ["grpo-annotated-0328-0853", "grpo-annotated-0328-1711"],
-        "keep": _annotated_keep,
-    },
-    "grpo-annotated-new": {
-        "runs": ["grpo-annotated-0409-2338"],
-        "keep": _annotated_keep,
-    },
-    "grpo-selfplay-new": {
-        "runs": ["grpo-self_play-0410-0625"],
-        "keep": _selfplay_keep,
-    },
-    "grpo-selfplay-temp12": {
-        "runs": ["grpo-self_play-0410-0811"],
-        "keep": _selfplay_keep,
-    },
-    "grpo-selfplay-reward-v2": {
-        "runs": ["grpo-self_play-0410-2003"],
-        "keep": _selfplay_keep,
-    },
-    "grpo-annotated-points": {
-        "runs": ["grpo-annotated-0411-0808"],
-        "keep": _annotated_keep,
+        "runs": ["grpo-self_play-0413-1759"],
+        "extra_skip": {"completions/clipped_ratio"},
+        "skip_prefixes": ("turn/",),
     },
 }
 
 THEME = {
-    "dark": {
-        "bg": "#1a1a1a",
-        "text": "#e8e8e8",
-        "grid": 0.12,
-        "spine": "#333",
-        "legend_bg": "#252525",
-        "legend_edge": "#333",
-        "colors": ["#eb5600", "#f4924d", "#c44800", "#ff8533", "#a33c00"],
-    },
-    "light": {
-        "bg": "#FAFAF8",
-        "text": "#1a1a1a",
-        "grid": 0.2,
-        "spine": "#ddd",
-        "legend_bg": "#ffffff",
-        "legend_edge": "#e0e0e0",
-        "colors": ["#eb5600", "#d44e00", "#ff7a26", "#b34300", "#993a00"],
-    },
+    "bg": "#FAFAF8",
+    "text": "#1a1a1a",
+    "grid": 0.2,
+    "spine": "#ddd",
+    "legend_bg": "#ffffff",
+    "legend_edge": "#e0e0e0",
+    "colors": ["#eb5600", "#d44e00", "#ff7a26", "#b34300", "#993a00"],
 }
 
-theme: dict = THEME["dark"]
 
-
-@dataclass
-class MetricSeries:
-    run: str
-    metric: str
-    steps: list[int] = field(default_factory=list)
-    values: list[float] = field(default_factory=list)
+def _keep_metric(name: str, group: dict) -> bool:
+    if name in SKIP or name in group.get("extra_skip", set()):
+        return False
+    if any(name.startswith(p) for p in group.get("skip_prefixes", ())):
+        return False
+    if name in GRPO_METRICS or any(name.startswith(p) for p in GRPO_PREFIXES):
+        return True
+    return any(name.startswith(p) for p in group.get("extra_prefixes", ()))
 
 
 def trackio_cmd(*args: str) -> dict:
-    cmd = ["trackio", *args, "--space", SPACE, "--json"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        ["trackio", *args, "--space", SPACE, "--json"],
+        capture_output=True,
+        text=True,
+    )
     if result.returncode != 0:
         return {}
     return json.loads(result.stdout)
@@ -182,43 +105,40 @@ def list_metrics(run: str) -> list[str]:
     )
 
 
-def get_metric(run: str, metric: str) -> MetricSeries:
+def get_metric(run: str, metric: str) -> dict:
     data = trackio_cmd(
         "get", "metric", "--project", PROJECT, "--run", run, "--metric", metric
     )
-    series = MetricSeries(run=run, metric=metric)
+    steps, values = [], []
     for entry in data.get("values", []):
-        series.steps.append(entry["step"])
-        series.values.append(entry["value"])
-    return series
+        steps.append(entry["step"])
+        values.append(entry["value"])
+    return {"run": run, "metric": metric, "steps": steps, "values": values}
 
 
 def smooth(values: list[float], weight: float = 0.9) -> np.ndarray:
     arr = np.array(values, dtype=float)
-    smoothed = np.empty_like(arr)
-    smoothed[0] = arr[0]
+    out = np.empty_like(arr)
+    out[0] = arr[0]
     for i in range(1, len(arr)):
-        smoothed[i] = weight * smoothed[i - 1] + (1 - weight) * arr[i]
-    return smoothed
+        out[i] = weight * out[i - 1] + (1 - weight) * arr[i]
+    return out
 
 
-def metric_to_filename(metric: str) -> str:
-    return metric.replace("/", "-").replace("_", "-") + ".png"
-
-
-def plot_metric(series_list: list[MetricSeries], out_path: Path) -> None:
-    t = theme
+def plot_metric(series_list: list[dict], out_path: Path) -> None:
+    t = THEME
     fig, ax = plt.subplots(figsize=(10, 5))
     fig.patch.set_facecolor(t["bg"])
     ax.set_facecolor(t["bg"])
 
-    metric_name = series_list[0].metric
-    colors = t["colors"]
+    metric_name = series_list[0]["metric"]
 
     for i, s in enumerate(series_list):
-        color = colors[i % len(colors)]
-        ax.plot(s.steps, s.values, color=color, alpha=0.3, linewidth=0.8)
-        ax.plot(s.steps, smooth(s.values), color=color, linewidth=2, label=s.run)
+        color = t["colors"][i % len(t["colors"])]
+        ax.plot(s["steps"], s["values"], color=color, alpha=0.3, linewidth=0.8)
+        ax.plot(
+            s["steps"], smooth(s["values"]), color=color, linewidth=2, label=s["run"]
+        )
 
     ax.set_xlabel("step", color=t["text"])
     ax.set_ylabel(metric_name.split("/")[-1], color=t["text"])
@@ -239,10 +159,8 @@ def plot_metric(series_list: list[MetricSeries], out_path: Path) -> None:
     plt.close(fig)
 
 
-def fetch_all_series(
-    runs: list[str], metrics: set[str]
-) -> dict[str, list[MetricSeries]]:
-    results: dict[str, list[MetricSeries]] = {m: [] for m in metrics}
+def fetch_all(runs: list[str], metrics: set[str]) -> dict[str, list[dict]]:
+    results: dict[str, list[dict]] = {m: [] for m in metrics}
     tasks = [(run, metric) for metric in metrics for run in runs]
     total = len(tasks)
 
@@ -252,42 +170,40 @@ def fetch_all_series(
         for future in as_completed(futures):
             done += 1
             series = future.result()
-            if series.steps:
-                results[series.metric].append(series)
+            if series["steps"]:
+                results[series["metric"]].append(series)
             print(f"\r  fetching {done}/{total}", end="", flush=True)
-
     print()
     return results
 
 
-def run_group(group_name: str, group: dict, *, data_only: bool = False) -> dict:
+def run_group(name: str, group: dict, *, data_only: bool) -> dict:
     runs = group["runs"]
-    keep_fn = group["keep"]
-
-    print(f"\n{group_name}")
+    print(f"\n{name}")
 
     all_metrics: set[str] = set()
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {pool.submit(list_metrics, r): r for r in runs}
         for future in as_completed(futures):
-            kept = [m for m in future.result() if keep_fn(m)]
-            all_metrics.update(kept)
+            all_metrics.update(m for m in future.result() if _keep_metric(m, group))
 
     print(f"  {len(all_metrics)} metrics x {len(runs)} runs")
-    by_metric = fetch_all_series(runs, all_metrics)
+    by_metric = fetch_all(runs, all_metrics)
 
-    out_dir = OUTPUT_ROOT / group_name
+    out_dir = OUTPUT_ROOT / name
     saved = 0
-    group_data: dict[str, list[dict]] = {}
+    group_data: dict = {}
     for metric in sorted(all_metrics):
         series_list = by_metric[metric]
         if not series_list:
             continue
-        series_list.sort(key=lambda s: runs.index(s.run) if s.run in runs else 0)
+        series_list.sort(key=lambda s: runs.index(s["run"]) if s["run"] in runs else 0)
         if not data_only:
-            plot_metric(series_list, out_dir / metric_to_filename(metric))
+            fname = metric.replace("/", "-").replace("_", "-") + ".png"
+            plot_metric(series_list, out_dir / fname)
         group_data[metric] = [
-            {"run": s.run, "steps": s.steps, "values": s.values} for s in series_list
+            {"run": s["run"], "steps": s["steps"], "values": s["values"]}
+            for s in series_list
         ]
         saved += 1
 
@@ -298,18 +214,10 @@ def run_group(group_name: str, group: dict, *, data_only: bool = False) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", help="Only process groups containing this run name")
-    parser.add_argument("--light", action="store_true", help="Light mode charts")
-    parser.add_argument(
-        "--data-only",
-        action="store_true",
-        help="Only fetch raw data JSON, skip chart PNGs",
-    )
+    parser.add_argument("--data-only", action="store_true", help="Skip chart PNGs")
     args = parser.parse_args()
 
-    global theme
-    if not args.data_only:
-        theme = THEME["light"] if args.light else THEME["dark"]
-
+    groups = RUN_GROUPS
     if args.run:
         groups = {
             k: v for k, v in RUN_GROUPS.items() if any(args.run in r for r in v["runs"])
@@ -317,22 +225,17 @@ def main() -> None:
         if not groups:
             print(f"no group found for '{args.run}'")
             sys.exit(1)
-    else:
-        groups = RUN_GROUPS
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
     out_json = OUTPUT_ROOT / "charts_data.json"
-    all_data: dict[str, dict] = {}
-    if out_json.exists():
-        all_data = json.loads(out_json.read_text())
+    all_data: dict = json.loads(out_json.read_text()) if out_json.exists() else {}
 
     for group_name, group in groups.items():
         all_data[group_name] = run_group(group_name, group, data_only=args.data_only)
 
     out_json.write_text(json.dumps(all_data, indent=2))
     print(f"\nraw data saved to {out_json.relative_to(REPO_ROOT)}")
-
     print("done")
 
 
