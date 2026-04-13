@@ -1,9 +1,9 @@
 models:
   - type: local_model
-    model_path: checkpoints/grpo-selfplay
+    model_path: checkpoints/grpo-annotated-0411-1/checkpoint-1200
     base_model: Qwen/Qwen2.5-7B-Instruct
     trust_remote_code: true
-    label: qwen2.5-7b-grpo-selfplay
+    label: qwen2.5-7b-grpo-annotated-cp1200
     max_new_tokens: 2048
     token_limit: 8192
 

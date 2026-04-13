@@ -1,10 +1,10 @@
 csv_path: data/casino/ca.test.csv
 num_episodes: 200
-max_turns: 18
+max_turns: 14
 temperature: 0.7
 top_p: 0.9
 seed: 42
-output_dir: logs/negotiate-0412-1
+output_dir: logs/negotiate
 
 persona_weights:
   uncompromising: 0.25
@@ -13,7 +13,6 @@ persona_weights:
   cooperative: 0.25
 
 matchups:
-  # GRPO cp1200 as learner vs SFT opponent
   - learner:
       label: grpo-annotated-cp1200
       model_path: checkpoints/grpo-annotated-0411-1/checkpoint-1200
@@ -23,7 +22,6 @@ matchups:
       model_path: checkpoints/sft-tuned-2
       base_model: Qwen/Qwen2.5-7B-Instruct
 
-  # Flipped: SFT as learner vs GRPO cp1200 opponent
   - learner:
       label: sft-tuned-2
       model_path: checkpoints/sft-tuned-2
@@ -33,7 +31,6 @@ matchups:
       model_path: checkpoints/grpo-annotated-0411-1/checkpoint-1200
       base_model: Qwen/Qwen2.5-7B-Instruct
 
-  # Control: SFT vs SFT
   - learner:
       label: sft-tuned-2
       model_path: checkpoints/sft-tuned-2
@@ -43,7 +40,6 @@ matchups:
       model_path: checkpoints/sft-tuned-2
       base_model: Qwen/Qwen2.5-7B-Instruct
 
-  # Reference: Qwen base vs SFT
   - learner:
       label: qwen-base
       model_path: Qwen/Qwen2.5-7B-Instruct
