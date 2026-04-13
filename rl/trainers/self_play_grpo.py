@@ -24,6 +24,7 @@ from rl.rewards import (
     judge_reward,
     length_reward,
     points_reward,
+    strategic_talk_reward,
 )
 from rl.trainers.base import BaseTrainer
 from rl.trainers.grpo import TurnTrackingGRPOTrainer, _wrap_reward_with_turn_tracking
@@ -473,7 +474,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
             gradient_checkpointing=cfg.gradient_checkpointing,
             bf16=cfg.bf16,
             report_to=cfg.report_to,
-            reward_weights=[0.3, 3.0, 0.5, 1.0],
+            reward_weights=[0.2, 0.5, 0.5, 2.5, 1.0],
             **cfg.extra_kwargs,
         )
         peft_config = self._build_peft_config(cfg.lora)
@@ -487,6 +488,7 @@ class SelfPlayGRPOTrainer(BaseTrainer):
                 judge_reward,
                 format_reward,
                 points_reward,
+                strategic_talk_reward,
             ]
         ]
 

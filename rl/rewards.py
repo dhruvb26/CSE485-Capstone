@@ -19,6 +19,14 @@ from rl.utils import (
     parse_submit_deal,
 )
 
+_ITEM_POINTS_RE = re.compile(
+    r"(food|water|firewood)\s*\((\d+)\s*points?\)", re.IGNORECASE
+)
+_PRIORITY_WORDS = re.compile(
+    r"\b(important|priority|need|must have|really want|crucial|essential)\b",
+    re.IGNORECASE,
+)
+
 _judge_client: OpenAI | None = None
 _judge_model: str = ""
 
@@ -349,5 +357,75 @@ def points_reward(completions, **kwargs) -> list[float]:
 
         else:
             rewards.append(0.0)
+
+    return rewards
+
+
+def _parse_priorities(system_prompt: str) -> dict[str, int]:
+    """Extract {item_name: point_value} from the system prompt."""
+    return {m.group(1).lower(): int(m.group(2)) for m in _ITEM_POINTS_RE.finditer(system_prompt)}
+
+
+def strategic_talk_reward(completions, **kwargs) -> list[float]:
+    """Reward for strategic quality of [TALK] turns.
+
+    Scores three heuristics (each 0 or 1, total normalised to [0, 1]):
+
+    1. **Claiming high-value items**: The ``<talk>`` mentions the learner's
+       highest-priority item (anchoring / asserting needs).
+    2. **Not leaking priorities**: The ``<talk>`` avoids explicit priority
+       language ("important", "must have", etc.) that reveals the value
+       ranking to the opponent.
+    3. **Mentioning a concession on low-value items**: The ``<talk>``
+       references the learner's lowest-priority item, signalling willingness
+       to trade it (strategic concession framing).
+
+    Only applies to ``[TALK]`` and ``[REJECT_DEAL]`` actions.  Deal actions
+    return 0.0 (handled by ``points_reward``).
+    """
+    system_prompts: list[str] = kwargs.get("system_prompt", [])
+    rewards: list[float] = []
+
+    for i, completion in enumerate(completions):
+        text = (
+            completion[0]["content"]
+            if isinstance(completion, list)
+            else str(completion)
+        )
+        action = extract_tag(text, "action")
+        if action is None:
+            rewards.append(0.0)
+            continue
+
+        action_upper = action.upper()
+        if "[TALK]" not in action_upper and "[REJECT_DEAL]" not in action_upper:
+            rewards.append(0.0)
+            continue
+
+        talk = extract_tag(text, "talk")
+        if talk is None:
+            rewards.append(0.0)
+            continue
+
+        sp = system_prompts[i] if i < len(system_prompts) else ""
+        priorities = _parse_priorities(sp)
+        if not priorities:
+            rewards.append(0.0)
+            continue
+
+        sorted_items = sorted(priorities.items(), key=lambda x: x[1], reverse=True)
+        high_item = sorted_items[0][0]
+        low_item = sorted_items[-1][0]
+        talk_lower = talk.lower()
+
+        score = 0.0
+        if high_item in talk_lower:
+            score += 1.0
+        if not _PRIORITY_WORDS.search(talk):
+            score += 1.0
+        if low_item in talk_lower:
+            score += 1.0
+
+        rewards.append(score / 3.0)
 
     return rewards
