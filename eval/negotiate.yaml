@@ -14,6 +14,24 @@ persona_weights:
 
 matchups:
   - learner:
+      label: sft-tuned-2
+      model_path: checkpoints/sft-tuned-2
+      base_model: Qwen/Qwen2.5-7B-Instruct
+    opponent:
+      label: grpo-selfplay-0413-2
+      model_path: checkpoints/grpo-selfplay-0413-2
+      base_model: Qwen/Qwen2.5-7B-Instruct
+
+  - learner:
+      label: grpo-selfplay-0413-2
+      model_path: checkpoints/grpo-selfplay-0413-2
+      base_model: Qwen/Qwen2.5-7B-Instruct
+    opponent:
+      label: sft-tuned-2
+      model_path: checkpoints/sft-tuned-2
+      base_model: Qwen/Qwen2.5-7B-Instruct
+
+  - learner:
       label: grpo-annotated-cp1200
       model_path: checkpoints/grpo-annotated-0411-1/checkpoint-1200
       base_model: Qwen/Qwen2.5-7B-Instruct

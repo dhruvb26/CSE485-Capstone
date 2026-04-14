@@ -1,9 +1,9 @@
 models:
   - type: local_model
-    model_path: checkpoints/grpo-annotated-0411-1/checkpoint-1200
+    model_path: checkpoints/grpo-selfplay-0413-2
     base_model: Qwen/Qwen2.5-7B-Instruct
     trust_remote_code: true
-    label: qwen2.5-7b-grpo-annotated-cp1200
+    label: qwen2.5-7b-grpo-selfplay-0413-2
     max_new_tokens: 2048
     token_limit: 8192
 
@@ -33,14 +33,8 @@ models:
 #
 # Use "all" to run every task, or "all_dnd", "all_casino", etc. for a dataset.
 tasks:
-  - sta_total_item_count_dnd
-  - sta_max_points_dnd
-  - sta_ask_point_values_dnd
-  - mid_dial_act_dnd
-  - mid_gen_resp_dnd
-  - end_deal_specifics_dnd
-  - end_deal_total_dnd
-  # mid_full_proposal_dnd excluded: all proposal annotations are null in dnd_ann.test.csv
+  - all_dnd
+  - all_casino
 
 num_instances: 200
 max_num_instances: 200

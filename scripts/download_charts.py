@@ -18,10 +18,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
+
+plt.rcParams["font.family"] = "Arial"
+
 
 PROJECT = "negotiation-agent"
 SPACE = "dhruvb26/negotiation-agent"
@@ -29,7 +32,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_ROOT = REPO_ROOT / "raw" / "charts"
 MAX_WORKERS = 12
 
-plt.rcParams["font.family"] = "Arial"
 
 GRPO_METRICS = {
     "entropy",
@@ -59,6 +61,7 @@ RUN_GROUPS = {
     "grpo-annotated": {
         "runs": ["grpo-annotated-0411-0808", "grpo-annotated-0411-1746"],
         "extra_prefixes": ("turn/",),
+        "merge": True,
     },
     "grpo-selfplay": {
         "runs": ["grpo-self_play-0413-1759"],
@@ -125,9 +128,44 @@ def smooth(values: list[float], weight: float = 0.9) -> np.ndarray:
     return out
 
 
+def merge_runs(series_list: list[dict]) -> list[dict]:
+    """Merge multiple runs of the same metric into a single continuous series.
+
+    When runs overlap (e.g. run1 ends at step 900, run2 starts at 810),
+    prefer the later run's values in the overlap region.
+    """
+    if len(series_list) <= 1:
+        return series_list
+
+    # Sort by first step
+    series_list.sort(key=lambda s: s["steps"][0] if s["steps"] else 0)
+
+    merged_steps: list[int] = []
+    merged_values: list[float] = []
+    step_to_value: dict[int, float] = {}
+
+    # Earlier runs first, later runs overwrite in overlap
+    for s in series_list:
+        for step, val in zip(s["steps"], s["values"]):
+            step_to_value[step] = val
+
+    for step in sorted(step_to_value):
+        merged_steps.append(step)
+        merged_values.append(step_to_value[step])
+
+    return [
+        {
+            "run": " + ".join(s["run"] for s in series_list),
+            "metric": series_list[0]["metric"],
+            "steps": merged_steps,
+            "values": merged_values,
+        }
+    ]
+
+
 def plot_metric(series_list: list[dict], out_path: Path) -> None:
     t = THEME
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(7, 3.5))
     fig.patch.set_facecolor(t["bg"])
     ax.set_facecolor(t["bg"])
 
@@ -198,6 +236,8 @@ def run_group(name: str, group: dict, *, data_only: bool) -> dict:
         if not series_list:
             continue
         series_list.sort(key=lambda s: runs.index(s["run"]) if s["run"] in runs else 0)
+        if len(series_list) > 1 and group.get("merge", False):
+            series_list = merge_runs(series_list)
         if not data_only:
             fname = metric.replace("/", "-").replace("_", "-") + ".png"
             plot_metric(series_list, out_dir / fname)
@@ -233,9 +273,9 @@ def main() -> None:
 
     for group_name, group in groups.items():
         all_data[group_name] = run_group(group_name, group, data_only=args.data_only)
-
     out_json.write_text(json.dumps(all_data, indent=2))
     print(f"\nraw data saved to {out_json.relative_to(REPO_ROOT)}")
+
     print("done")
 
 
