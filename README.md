@@ -156,7 +156,7 @@ Available datasets: `amazon_history_price`, `casino`, `cra`, `craigslist_bargain
 
 ## Charts
 
-The `scripts/download_charts.py` script fetches training metrics from the [Trackio](https://github.com/gradio-app/trackio) HuggingFace Space and generates chart PNGs into `assets/`. Dependencies (`trackio`, `matplotlib`, `huggingface-hub`) are handled by `uv sync` (see [Local setup](#local-charts-eval-report) above).
+`scripts/download_charts.py` fetches GRPO training metrics from the [Trackio](https://github.com/gradio-app/trackio) HuggingFace Space (`dhruvb26/negotiation-agent`) and generates chart PNGs with EMA-smoothed curves. It downloads metrics in parallel, optionally merges multi-run series (e.g. resumed checkpoints), and writes both PNGs and a `charts_data.json` file under `raw/charts/` (gitignored). Dependencies (`trackio`, `matplotlib`) are handled by `uv sync` (see [Local setup](#local-charts-eval-report) above).
 
 ### HuggingFace Authentication
 
@@ -175,12 +175,12 @@ export HF_TOKEN=hf_...
 ### Usage
 
 ```bash
-uv run scripts/download_charts.py              # all run groups, dark theme
-uv run scripts/download_charts.py --light       # light theme
-uv run scripts/download_charts.py --run sft-0328-0839  # single run group
+uv run scripts/download_charts.py                         # all run groups
+uv run scripts/download_charts.py --run grpo-annotated    # single run group
+uv run scripts/download_charts.py --data-only             # fetch JSON data, skip PNGs
 ```
 
-Charts are saved to `assets/<group-name>/` (e.g. `assets/sft/`, `assets/grpo-selfplay/`).
+Charts are saved to `raw/charts/<group-name>/` (e.g. `raw/charts/grpo-annotated/`, `raw/charts/grpo-selfplay/`). Raw metric data is saved to `raw/charts/charts_data.json`.
 
 ## Report
 
