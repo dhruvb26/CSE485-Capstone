@@ -22,7 +22,7 @@ header-includes:
   - \usepackage{amssymb}
   - \usepackage{subcaption}
 abstract: |
-  Automated negotiation with large language models (LLMs) is commercially attractive but technically demanding: a capable agent must track private utilities, adapt strategy across many turns, produce numerically valid proposals, and know when to concede or walk away. We consider two regimes in which LLMs participate in negotiation. In the mixed setting, an LLM faces a human or unstructured counterpart in an assistive or advisory role. In the symmetric multi-agent setting, two LLM agents bargain under a shared formal protocol with private priorities until a deal, impasse, or turn limit is reached. This paper presents a complete pipeline for the symmetric regime: a structured Thought / Talk / Action output format that decouples strategic intent from language generation, a three-stage training procedure combining supervised fine-tuning with reinforcement learning, and a composite reward scheme targeting deal-level outcomes. We train and evaluate on the CaSiNo multi-issue bargaining corpus, pitting the trained agent in head-to-head play against opponents conditioned on diverse personas. Our results show that the trained agent improves in-distribution deal rate relative to the untuned base model, while also highlighting that agreement rate and utility are distinct objectives that can move independently. We discuss the implications of these findings for the design and evaluation of negotiation agents in business settings.
+  Automated negotiation with large language models (LLMs) is commercially attractive but technically demanding: a capable agent must track private utilities, adapt strategy across many turns, produce numerically valid proposals, and know when to concede or walk away. We consider two regimes in which LLMs participate in negotiation. In the mixed setting, an LLM faces a human or unstructured counterpart in an assistive or advisory role. In the symmetric multi-agent setting, two LLM agents bargain under a shared formal protocol with private priorities until a deal, impasse, or turn limit is reached. This paper presents a complete pipeline for the symmetric regime: a structured Thought / Talk / Action output format that decouples strategic intent from language generation, a three-stage training procedure combining supervised fine-tuning with reinforcement learning, and a composite reward scheme targeting deal-level outcomes. We train and evaluate on the CaSiNo multi-issue bargaining corpus, pitting the trained agent in head-to-head play against opponents conditioned on diverse personas. Our results show that the trained agent modestly improves aggregate deal rate relative to the untuned base model, while also highlighting that agreement rate and utility are distinct objectives that can move independently. We discuss the implications of these findings for the design and evaluation of negotiation agents in business settings.
 ---
 
 # Introduction
@@ -67,7 +67,7 @@ NegotiationArena [@bianchi2024negotiationarena] confirms this in live play. Init
 
 ## Domain and Data
 
-We train and evaluate on CaSiNo [@chawla2021casino], a corpus of 1,030 human-human negotiation dialogues in which two campsite neighbors divide three packages each of food, water, and firewood. Each participant is assigned a private priority ordering over the three item types, which maps to point values: high priority items are worth 5 points, medium 4, and low 3, for a maximum of 15 points per agent. This setup is a clean instance of the symmetric multi-agent problem: two parties, a shared item pool, private utilities, and a well-defined terminal outcome. We train on the training split and report results on held-out test scenarios to check generalization.
+We train and evaluate on CaSiNo [@chawla2021casino], a corpus of 1,030 human-human negotiation dialogues in which two campsite neighbors divide three packages each of food, water, and firewood. Each participant is assigned a private priority ordering over the three item types, which maps to point values: high-priority items are worth 5 points, medium 4, and low 3, for a maximum of 15 points per agent. This setup is a clean instance of the symmetric multi-agent problem: two parties, a shared item pool, private utilities, and a well-defined terminal outcome. We train on the training split and report results on held-out test scenarios to check generalization.
 
 ## Structured Output Format
 
@@ -142,9 +142,9 @@ The comprehension task suite evaluates passive understanding: whether a model ca
 
 We implement a separate head-to-head evaluation harness (`negotiate.py`) that runs full negotiation episodes between two LLM agents. Each episode loads a CaSiNo scenario, assigns private priorities to both sides, and alternates turns between a learner and an opponent model. The harness enforces the structured output format, strips `<thought>` blocks before forwarding messages to the counterpart, flips deal perspectives so each side sees the allocation from their own point of view, and tracks format compliance per turn. Episodes terminate on `[ACCEPT_DEAL]`, `[WALK_AWAY]`, a reject loop (three consecutive identical `[SUBMIT_DEAL]` proposals), or a configurable turn limit.
 
-This harness is necessary because the comprehension tasks cannot measure the qualities that training is designed to improve. A model that aces priority identification tasks may still fail to leverage those priorities when generating offers. A model that understands deal arithmetic in isolation may produce malformed proposals under the pressure of a multi-turn exchange. The head-to-head harness directly measures deal rate, learner and opponent points, score ratio (learner points divided by the sum of both players' points, where 0.5 indicates parity), turns to deal, format compliance, and malformed deal rate , all broken down by opponent persona. These are the metrics that reveal whether RL training produced a better negotiator, not just a better test-taker.
+This harness is necessary because the comprehension tasks cannot measure the qualities that training is designed to improve. A model that aces priority identification tasks may still fail to leverage those priorities when generating offers. A model that understands deal arithmetic in isolation may produce malformed proposals under the pressure of a multi-turn exchange. The head-to-head harness directly measures deal rate, learner and opponent points, score ratio (learner points divided by the sum of both players' points, where 0.5 indicates parity), turns to deal, format compliance, and malformed deal rate, all broken down by opponent persona. These are the metrics that reveal whether RL training produced a better negotiator, not just a better test-taker.
 
-We evaluate four models — the GRPO self-play checkpoint, the annotated GRPO checkpoint (step 1,200), the SFT checkpoint, and the untuned Qwen base model — in a round-robin format. Each model plays 200 episodes as the learner (first mover) against the SFT checkpoint as the standard opponent, with opponent persona sampled uniformly across the four types. We also run cross-matches where the SFT checkpoint faces the two GRPO checkpoints as opponents, yielding six matchups total.
+We evaluate four models (the GRPO Self-Play checkpoint, the annotated GRPO checkpoint at step 1,200, the SFT checkpoint, and the untuned Qwen base model) in a round-robin format. Each model plays 200 episodes as the learner (first mover) against the SFT checkpoint as the standard opponent, with opponent persona sampled uniformly across the four types. We also run cross-matches where the SFT checkpoint faces the two GRPO checkpoints as opponents, yielding six matchups total.
 
 # Results
 
@@ -207,79 +207,77 @@ Uncompromising & 17.51 & 15.88 & 17.26 & \textbf{18.13} \\
 
 GRPO's clearest gains are persona-specific. Against uncompromising opponents, GRPO-SP achieves 79.7% deal rate versus SFT's 67.3% (+12.4pp) while recovering to 17.51 points from GRPO-Ann's 15.88. Against cooperative opponents, GRPO-SP scores 19.36 points (ratio 0.541), the only case where any model consistently outscores its opponent. Against anchoring opponents, all models score below parity (ratios 0.42--0.46), confirming that anchoring is effective regardless of the counterpart.
 
-The annotated GRPO checkpoint reveals a tradeoff: it scores the lowest points against uncompromising opponents (15.88, ratio 0.439), suggesting that training on human dialogues---where participants generally reach agreement---made the model too accommodating against hard bargainers. Self-play partially corrects this by restoring utility while maintaining the highest deal rate in that category.
+The annotated GRPO checkpoint reveals a tradeoff: it scores the lowest points against uncompromising opponents (15.88, ratio 0.439), suggesting that training on human dialogues, where participants generally reach agreement, made the model too accommodating against hard bargainers. Self-play partially corrects this by restoring utility while maintaining the highest deal rate in that category.
 
 ## Comprehension Task Performance
 
-Table \ref{tab:comp-casino} reports the CaSiNo comprehension results. Start-stage tasks (scenario comprehension before any dialogue) are at or near ceiling for both models, with one exception: both models fail `max_points` (33.3%), suggesting difficulty computing the maximum achievable score from a priority assignment. The small sample size (n=6) on start-stage tasks limits their diagnostic value.
+Table \ref{tab:comp-casino} reports CaSiNo comprehension results across all three checkpoints and the base model. Start-stage tasks (scenario comprehension before any dialogue) are at or near ceiling for all models, with one exception: `max_points` is low across the board (17--33%), and GRPO-SP drops to 16.7%. The small sample size (n=6) limits the diagnostic value of start-stage tasks.
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{llccc}
+\begin{tabular}{llcccc}
 \toprule
-Stage & Task & Metric & GRPO-Ann & Base \\
+Stage & Task & Metric & GRPO-SP & GRPO-Ann & Base \\
 \midrule
-Start & High priority      & Acc.     & 1.000 & 1.000 \\
-      & Low priority       & Acc.     & .833  & \textbf{1.000} \\
-      & Point values       & Elem.    & 1.000 & 1.000 \\
-      & Max points         & Acc.     & .333  & .333  \\
-      & Item count         & Acc.     & 1.000 & 1.000 \\
+Start & High priority      & Acc.     & 1.000 & 1.000 & 1.000 \\
+      & Low priority       & Acc.     & .833  & .833  & \textbf{1.000} \\
+      & Point values       & Elem.    & 1.000 & 1.000 & 1.000 \\
+      & Max points         & Acc.     & .167  & \textbf{.333} & \textbf{.333} \\
+      & Item count         & Acc.     & 1.000 & 1.000 & 1.000 \\
 \midrule
-Mid   & Own high priority  & Acc.     & .694  & .694  \\
-      & Own low priority   & Acc.     & \textbf{.579} & .537  \\
-      & Partner high prior.& Acc.     & .545  & \textbf{.628} \\
-      & Partner low prior. & Acc.     & \textbf{.306} & .289  \\
-      & Strategy classif.  & F1       & \textbf{.437} & .394  \\
-      & Response gen.      & B / R    & \textbf{.143 / .19} & .139 / .18 \\
+Mid   & Own high priority  & Acc.     & \textbf{.744} & .694  & .694  \\
+      & Own low priority   & Acc.     & \textbf{.579} & \textbf{.579} & .537  \\
+      & Partner high prior.& Acc.     & .570  & .545  & \textbf{.628} \\
+      & Partner low prior. & Acc.     & .281  & \textbf{.306} & .289  \\
+      & Strategy classif.  & F1       & \textbf{.442} & .437  & .394  \\
+      & Response gen.      & B / R    & .143 / \textbf{.19} & \textbf{.143} / .18 & .139 / .18 \\
 \midrule
-End   & Deal specifics     & Elem.    & \textbf{.871} & .843  \\
-      & Deal total         & Acc.     & .719  & \textbf{.736} \\
-      & Deal likeness      & Acc.     & .364  & \textbf{.388} \\
-      & Deal satisfaction  & Acc.     & .397  & .397  \\
-      & Partner deal like. & Acc.     & \textbf{.504} & .471  \\
-      & Partner deal sat.  & Acc.     & .397  & \textbf{.413} \\
+End   & Deal specifics     & Elem.    & \textbf{.920} & .871  & .843  \\
+      & Deal total         & Acc.     & .661  & .719  & \textbf{.736} \\
+      & Deal likeness      & Acc.     & .372  & .364  & \textbf{.388} \\
+      & Deal satisfaction  & Acc.     & \textbf{.430} & .397  & .397  \\
+      & Partner deal like. & Acc.     & .471  & \textbf{.504} & .471  \\
+      & Partner deal sat.  & Acc.     & \textbf{.446} & .397  & .413  \\
 \bottomrule
 \end{tabular}
-\caption{CaSiNo comprehension task results comparing the annotated GRPO checkpoint (step 1,200) against the untuned Qwen base model. Elem. = elementwise accuracy; B / R = BLEU / ROUGE. Start-stage n=6, mid/end n=121--200. Bold indicates the higher score per task.}
+\caption{CaSiNo comprehension task results. Elem. = elementwise accuracy; B / R = BLEU / ROUGE. Start-stage n=6, mid/end n=121--200. Bold indicates the highest score per task.}
 \label{tab:comp-casino}
 \end{table}
 
-Mid-stage tasks show the most informative variation. Own-priority identification is unchanged (69.4%), but partner high-priority inference drops 8.3 percentage points after GRPO training (62.8% to 54.5%). Strategy classification improves by 4.2 points F1 (39.4% to 43.7%), and own low-priority identification improves by 4.1 points. Response generation metrics are marginally higher on both BLEU and ROUGE.
+Mid-stage tasks show the most informative variation. Own high-priority identification is unchanged from base to annotated (both 69.4%) then jumps to 74.4% after self-play, a 5-point gain. Strategy classification follows the same pattern (39.4% to 43.7% to 44.2%). However, partner high-priority inference regresses: the base model leads at 62.8%, dropping to 54.5% (annotated) and recovering only to 57.0% (self-play). Both GRPO checkpoints are worse than the base model at reading the opponent's priorities from dialogue context.
 
-End-stage tasks are mixed: the GRPO checkpoint is better at identifying deal specifics (element-level accuracy +2.8 points) and partner deal likeness (+3.3 points), but slightly worse at deal total accuracy (-1.7 points) and deal likeness (-2.5 points). The subjective judgment tasks (satisfaction, likeness) hover near chance for both models.
+End-stage tasks reveal a striking pattern on deal specifics: GRPO-SP achieves 92.0% elementwise accuracy, a 7.7-point improvement over the base model's 84.3%. This is the largest single improvement across all comprehension tasks and suggests that self-play training sharpened the model's ability to identify the specific terms of a deal. However, deal total accuracy moves in the opposite direction (73.6% base to 66.1% self-play), indicating the model is better at parsing individual allocations but worse at computing the aggregate.
 
-Table \ref{tab:comp-dnd} reports the DealOrNoDeal results, which test out-of-distribution transfer since the model was trained only on CaSiNo.
+Table \ref{tab:comp-dnd} reports DealOrNoDeal results, which test out-of-distribution transfer since the model was trained only on CaSiNo.
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{llccc}
+\begin{tabular}{llcccc}
 \toprule
-Stage & Task & Metric & GRPO-Ann & Base \\
+Stage & Task & Metric & GRPO-SP & GRPO-Ann & Base \\
 \midrule
-Start & Point values  & Elem.   & \textbf{.591} & .583  \\
-      & Max points    & Acc.    & .630  & \textbf{.709} \\
-      & Item count    & Acc.    & 1.000 & 1.000 \\
+Start & Point values  & Elem.   & .567  & \textbf{.591} & .583  \\
+      & Max points    & Acc.    & .669  & .630  & \textbf{.709} \\
+      & Item count    & Acc.    & 1.000 & 1.000 & 1.000 \\
 \midrule
-Mid   & Dialogue acts & F1      & \textbf{.255} & .245  \\
-      & Response gen. & B / R   & \textbf{.112 / .22} & .107 / .21 \\
+Mid   & Dialogue acts & F1      & \textbf{.260} & .255  & .245  \\
+      & Response gen. & B / R   & .108 / .21 & \textbf{.112 / .22} & .107 / .21 \\
 \midrule
-End   & Deal specifics& Elem.   & .532  & \textbf{.548} \\
-      & Deal total    & Acc.    & \textbf{.610} & .560  \\
+End   & Deal specifics& Elem.   & \textbf{.550} & .532  & .548  \\
+      & Deal total    & Acc.    & .565  & \textbf{.610} & .560  \\
 \bottomrule
 \end{tabular}
-\caption{DealOrNoDeal comprehension task results. Start-stage n=127, mid/end n=200. The \texttt{mid\_full\_proposal} task is excluded (n=0 for the GRPO checkpoint). Bold indicates the higher score per task.}
+\caption{DealOrNoDeal comprehension task results. Start-stage n=127, mid/end n=200. The \texttt{mid\_full\_proposal} task is excluded (n=0 for both GRPO checkpoints). Bold indicates the highest score per task.}
 \label{tab:comp-dnd}
 \end{table}
 
-On DealOrNoDeal, the GRPO checkpoint improves deal total accuracy by 5 percentage points (56.0% to 61.0%) but drops max points accuracy by 7.9 points (70.9% to 63.0%). Dialogue act classification and response generation show small gains. The `mid_full_proposal` task produced no valid outputs for the GRPO checkpoint and is excluded.
+On DealOrNoDeal, max points accuracy drops from the base model (70.9% to 63.0% annotated) then partially recovers after self-play (66.9%), while dialogue act classification improves monotonically (24.5% to 25.5% to 26.0%). The changes are small and no model dominates.
 
-The overall pattern is that GRPO training does not systematically improve or degrade comprehension. Of 22 comparable tasks across both datasets, the GRPO checkpoint is higher on 12, lower on 7, and tied on 3. The changes are small, typically under 5 percentage points, with two exceptions: partner high-priority inference on CaSiNo (-8.3 points) and max points on DealOrNoDeal (-7.9 points).
+Across all 24 comparable tasks, GRPO-SP leads on 7, GRPO-Ann on 5, the base model on 5, with 7 ties. The overall pattern is that GRPO training does not systematically improve or degrade comprehension. Most changes are under 5 percentage points.
 
-The partner-modeling regression on CaSiNo is the most noteworthy result. The GRPO checkpoint is worse at inferring the opponent's high-priority item from dialogue context, even though it was trained on the same dialogues. This aligns with the head-to-head finding that annotated GRPO produced a model that concedes more against hard bargainers: the training signal rewarded proposals that maximize the learner's own points, which may have de-emphasized the skill of reading the opponent's priorities from conversational cues. The model learned to optimize its own utility without needing to model the counterpart as precisely.
-
-Critically, comprehension scores do not predict head-to-head performance. The base model matches or exceeds the GRPO checkpoint on several comprehension tasks while scoring lower on deal rate and score ratio in live negotiation. This confirms the evaluation gap identified in Section 4: a model can understand negotiation transcripts without being able to negotiate effectively, and the reverse also holds.
+The partner-modeling regression is the most noteworthy finding. Both GRPO checkpoints are worse than the base model at inferring the opponent's high-priority item from dialogue context (-8.3pp for annotated, -5.8pp for self-play vs. base). This aligns with the head-to-head result that annotated GRPO produced a more accommodating model: the training signal rewarded proposals that maximize the learner's own points, which may have de-emphasized opponent modeling. Comprehension scores do not predict head-to-head performance: the base model leads on several comprehension tasks while performing worse in live negotiation, confirming the evaluation gap identified in Section 4.
 
 ## Training Dynamics
 
@@ -308,7 +306,7 @@ Figure \ref{fig:annotated-rewards} shows the per-component reward means across t
   \caption{Points reward}
 \end{subfigure}
 \begin{subfigure}[t]{0.47\textwidth}
-  \includegraphics[width=\textwidth]{../raw/charts/grpo-annotated/reward.png}
+  \includegraphics[width=\textwidth]{../assets/reward_ann.png}
   \caption{Total reward}
 \end{subfigure}
 \hfill
@@ -320,7 +318,7 @@ Figure \ref{fig:annotated-rewards} shows the per-component reward means across t
 \label{fig:annotated-rewards}
 \end{figure}
 
-The reward components follow a clear learning sequence. **Format reward** dips from 0.80 to 0.70 in the first 200 steps as the optimizer explores, then climbs steadily to 0.95 by step 1,100. **Length reward** follows a U-shaped path (0.78 to 0.66 to 0.77) with negligible net change. **Judge reward** is the hardest signal to move, gaining only 0.06 over the full run (0.32 to 0.38); the LLM-as-judge signal is too noisy to drive large behavioral changes.
+The reward components follow a clear learning sequence. **Format reward** dips from 0.80 to 0.70 in the first 200 steps as the optimizer explores, then climbs steadily to 0.95 by step 1,100. **Length reward** follows a U-shaped path (0.78 to 0.68 to 0.77) with negligible net change. **Judge reward** is the hardest signal to move, gaining only 0.06 over the full run (0.32 to 0.38); the LLM-as-judge signal is too noisy to drive large behavioral changes.
 
 The key structural feature is the **points reward** inflection at step 700: the signal is flat at 0.25--0.30 for the first 700 steps, then climbs steeply to 0.57 by step 1,300. This delay suggests the model needed to stabilize format compliance before the utility signal could take effect. **Total reward** mirrors this trajectory (2.20 to 2.70), dominated by the points component in the second half of training. Policy loss variance increases after step 600, consistent with the model making larger updates as it discovers higher-reward behaviors.
 
@@ -359,7 +357,7 @@ Figure \ref{fig:annotated-turns} breaks the judge and points rewards down by tur
 \label{fig:annotated-turns}
 \end{figure}
 
-The turn-position breakdown reveals that most learning happens on late turns. **Late-turn format reward** shows the largest single improvement in the run: 0.57 to 0.95 (+0.38), while early-turn format starts at 0.96 and stays there. The model's main challenge was maintaining structural compliance across longer dialogues, not producing it initially. Points reward roughly doubles on both early and late turns (0.30 to 0.60), with the late-turn inflection at step 700 matching the aggregate pattern. Judge reward is flat on early turns (0.36 throughout) and shows only a modest rise on late turns (0.27 to 0.40). Reward standard deviation declines from 0.55 to 0.42 (more consistent outputs), and clip ratio stays below 0.1% after the first 250 steps, confirming conservative policy updates.
+The turn-position breakdown reveals that most learning happens on late turns. **Late-turn format reward** shows the largest single improvement in the run: 0.57 to 0.95 (+0.38), while early-turn format starts near ceiling (~0.96) and, after a brief early dip, returns there. The model's main challenge was maintaining structural compliance across longer dialogues, not producing it initially. Points reward roughly doubles on early turns (0.28 to 0.60) and more than doubles on late turns (0.30 to 0.75), with the late-turn inflection at step 700 matching the aggregate pattern. Judge reward is flat on early turns (0.36 throughout) and shows only a modest rise on late turns (0.27 to 0.40). Reward standard deviation declines from 0.55 to 0.42 (more consistent outputs), and clip ratio stays below 0.1% after the first 250 steps, confirming conservative policy updates.
 
 ### Self-Play GRPO
 
@@ -391,7 +389,7 @@ Figure \ref{fig:selfplay-rewards} shows the per-component reward means for the s
 \end{subfigure}
 \hfill
 \begin{subfigure}[t]{0.47\textwidth}
-  \includegraphics[width=\textwidth]{../raw/charts/grpo-selfplay/reward.png}
+  \includegraphics[width=\textwidth]{../assets/reward_grpo.png}
   \caption{Total reward}
 \end{subfigure}
 \caption{Per-component and total reward means during self-play GRPO training (approximately 870 steps from checkpoint-1200). Bold lines show exponential smoothing; faint lines show raw values.}
@@ -410,15 +408,15 @@ The contrast between stages is stark. Annotated GRPO showed a clear points infle
 
 The central question is whether GRPO training produced a meaningfully better negotiator. The aggregate evidence says: marginally. The untuned base model achieves 91.5% deal rate and 0.485 score ratio; GRPO Self-Play reaches 93.0% and 0.493. Two stages of reinforcement learning bought 1.5 percentage points on deal rate and 0.008 on ratio. The base model was already a competent negotiator from pretraining.
 
-Where GRPO does make a difference is persona-specific robustness. Against uncompromising opponents, GRPO-SP closes 12.4 percentage points more deals than SFT (79.7% vs. 67.3%) while maintaining reasonable utility. Against cooperative opponents, it is the only model that consistently outscores its counterpart (ratio 0.541). These targeted gains come from the annotated stage, not self-play: the annotated run showed a clear points-reward inflection at step 700 and meaningful late-turn format improvements, while self-play total reward declined (2.45 to 2.31) as the frozen opponent provided no new learning signal.
+Where GRPO does make a difference is persona-specific robustness. Against uncompromising opponents, GRPO-SP closes 12.4 percentage points more deals than SFT (79.7% vs. 67.3%) while maintaining reasonable utility. Against cooperative opponents, it is the only model that consistently outscores its counterpart (ratio 0.541). The annotated stage drove the largest training-time improvements: a clear points-reward inflection at step 700 and meaningful late-turn format gains. Self-play total reward declined (2.45 to 2.31) as the frozen opponent provided diminishing learning signal, yet the self-play checkpoint outperforms the annotated one on every head-to-head metric (deal rate 93.0% vs. 91.5%, ratio 0.493 vs. 0.475, uncompromising deal rate 79.7% vs. 75.9%). This disconnect between training reward and evaluation performance suggests that self-play exposure to diverse opponent personas improved robustness in ways the reward signal did not capture.
 
-The annotated GRPO checkpoint also reveals a tradeoff between deal rate and utility. It scores the lowest points against uncompromising opponents (15.88, ratio 0.439), suggesting that training on human dialogues---where participants generally reach agreement---biased the model toward accommodation. Self-play partially corrects this, recovering utility while maintaining the highest deal rate in that category.
+The annotated GRPO checkpoint also reveals a tradeoff between deal rate and utility. It scores the lowest points against uncompromising opponents (15.88, ratio 0.439), suggesting that training on human dialogues, where participants generally reach agreement, biased the model toward accommodation. Self-play partially corrects this, recovering utility while maintaining the highest deal rate in that category.
 
 Credit assignment remains the primary bottleneck. The judge reward, the only signal targeting reasoning quality, improved by 0.06 over 1,430 annotated steps and declined during self-play. The LLM-as-judge gradient is too weak to drive behavioral changes on the timescale of either run. A fine-tuned reward model or a mechanism connecting deal outcomes to specific reasoning steps would be needed for further progress.
 
 Two architectural insights emerge for future work. First, binary verifiable rewards (format, length) saturate quickly and stop contributing gradient; an adaptive weighting scheme that downweights saturated components could improve sample efficiency. Second, self-play against a frozen opponent collapses the strategic diversity that makes annotated GRPO effective. Periodically refreshing the opponent from the learner's own checkpoint would reintroduce pressure, though this risks cyclic dynamics. Adding a KL penalty (beta > 0) during self-play would constrain the policy drift that caused strategic talk and judge rewards to decline.
 
-The comprehension results reinforce a key evaluation finding: passive understanding does not predict live negotiation ability. The base model matches or exceeds the GRPO checkpoint on several comprehension tasks while performing worse in head-to-head play. The partner-modeling regression (-8.3pp on CaSiNo partner high-priority inference) suggests that optimizing own-utility rewards may de-emphasize opponent modeling, a tradeoff worth investigating in future work.
+The comprehension results reinforce a key evaluation finding: passive understanding does not predict live negotiation ability. The base model matches or exceeds the GRPO checkpoint on several comprehension tasks while performing worse in head-to-head play. The partner-modeling regression (up to -8.3pp on CaSiNo partner high-priority inference) suggests that optimizing own-utility rewards may de-emphasize opponent modeling, a tradeoff worth investigating in future work.
 
 
 ---
