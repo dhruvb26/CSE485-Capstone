@@ -1,0 +1,42 @@
+model:
+  name: Qwen/Qwen3-30B-A3B-Instruct-2507
+  dtype: bfloat16
+  max_memory:
+    0: 72GiB
+    1: 72GiB
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: none
+  target_modules: all-linear
+  task_type: CAUSAL_LM
+
+training:
+  csv_path: data/casino/ca.train.csv
+  output_dir: checkpoints/online-grpo-qwen3-35b-a3b
+
+  num_iterations: 60
+  groups_per_iteration: 64
+  group_size: 8
+
+  max_turns: 12
+  max_new_tokens: 300
+  learner_temperature: 1.0
+  opponent_temperature: 0.7
+
+  learning_rate: 1.0e-5
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  kl_beta: 0.0
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_epsilon: 1.0e-8
+
+  seed: 42
+  use_lora: true
+  gradient_checkpointing: true
+
+  log_every: 1
+  save_every: 10
