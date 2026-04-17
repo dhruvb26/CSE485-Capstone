@@ -2,8 +2,8 @@ model:
   name: Qwen/Qwen3-30B-A3B-Instruct-2507
   dtype: bfloat16
   max_memory:
-    0: 72GiB
-    1: 72GiB
+    0: 42GiB
+    1: 42GiB
 
 lora:
   r: 16
@@ -15,7 +15,7 @@ lora:
 
 training:
   csv_path: data/casino/ca.train.csv
-  output_dir: checkpoints/online-grpo-qwen3-35b-a3b
+  output_dir: checkpoints/online-grpo-qwen3-30b-a3b
 
   num_iterations: 60
   groups_per_iteration: 64
@@ -40,3 +40,9 @@ training:
 
   log_every: 1
   save_every: 10
+
+vllm:
+  max_model_len: 4096
+  gpu_memory_utilization: 0.40
+  tensor_parallel_size: 2
+  max_lora_rank: 64
