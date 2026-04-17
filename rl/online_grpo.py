@@ -20,7 +20,6 @@ import trackio
 import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from vllm import LLM, SamplingParams
-from vllm.lora.request import LoRARequest
 
 logger = logging.getLogger(__name__)
 
@@ -182,8 +181,8 @@ def load_learner(
 ) -> tuple[AutoModelForCausalLM, AutoTokenizer]:
     """Load the base model + tokenizer and (optionally) wrap with a LoRA adapter.
 
-    This model is used for the GRPO training forward/backward pass.
-    Generation is handled separately by the vLLM engine.
+    This model is used for GRPO training and on-policy learner generation.
+    Opponent generation is handled by the vLLM engine (base model only).
     """
     torch_dtype = resolve_dtype(dtype)
     logger.info(f"Loading learner {model_name} (dtype={torch_dtype})")
@@ -233,13 +232,13 @@ def create_vllm_engine(
     dtype: str = "bfloat16",
     max_model_len: int = 4096,
     gpu_memory_utilization: float = 0.45,
-    max_lora_rank: int = 64,
     tensor_parallel_size: int = 1,
     enforce_eager: bool = False,
 ) -> LLM:
-    """Create a vLLM engine with LoRA support for fast generation."""
+    """Create a vLLM engine with the base model for fast opponent generation."""
     logger.info(
-        "Creating vLLM engine (tp=%d, gpu_mem=%.2f, eager=%s)",
+        "Creating vLLM engine (model=%s, tp=%d, gpu_mem=%.2f, eager=%s)",
+        model_name,
         tensor_parallel_size,
         gpu_memory_utilization,
         enforce_eager,
@@ -249,23 +248,20 @@ def create_vllm_engine(
         dtype=dtype,
         max_model_len=max_model_len,
         gpu_memory_utilization=gpu_memory_utilization,
-        enable_lora=True,
-        max_lora_rank=max_lora_rank,
         tensor_parallel_size=tensor_parallel_size,
         trust_remote_code=True,
         enforce_eager=enforce_eager,
     )
 
 
-def generate_batch(
+def generate_batch_vllm(
     engine: LLM,
     tokenizer: AutoTokenizer,
     messages_batch: list[list[dict]],
     temperature: float,
     max_new_tokens: int,
-    lora_request: LoRARequest | None = None,
 ) -> list[tuple[str, list[int], list[int]]]:
-    """Batched chat generation via vLLM; returns ``(text, prompt_ids, completion_ids)`` per input."""
+    """Batched chat generation via vLLM (base model); returns ``(text, prompt_ids, completion_ids)`` per input."""
     prompt_texts = [
         tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
         for m in messages_batch
@@ -274,11 +270,7 @@ def generate_batch(
         temperature=temperature,
         max_tokens=max_new_tokens,
     )
-    outputs = engine.generate(
-        prompt_texts,
-        sampling_params,
-        lora_request=lora_request,
-    )
+    outputs = engine.generate(prompt_texts, sampling_params)
     results: list[tuple[str, list[int], list[int]]] = []
     for output in outputs:
         prompt_ids = list(output.prompt_token_ids)
@@ -288,24 +280,48 @@ def generate_batch(
     return results
 
 
-def sync_lora_weights(
+@torch.no_grad()
+def generate_batch_hf(
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
-    adapter_path: str,
-    lora_id: int = 1,
-) -> LoRARequest:
-    """Save the current LoRA adapter to disk and return a fresh :class:`LoRARequest`.
+    messages_batch: list[list[dict]],
+    temperature: float,
+    max_new_tokens: int,
+) -> list[tuple[str, list[int], list[int]]]:
+    """On-policy batched generation via HuggingFace ``model.generate()``."""
+    prompt_texts = [
+        tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
+        for m in messages_batch
+    ]
+    device = next(model.get_input_embeddings().parameters()).device
+    encoded = tokenizer(
+        prompt_texts, return_tensors="pt", padding=True,
+    ).to(device)
+    input_len = encoded["input_ids"].shape[1]
 
-    vLLM loads the adapter from the filesystem, so we write the updated weights
-    after each GRPO step and bump ``lora_id`` to force a reload.
-    """
-    os.makedirs(adapter_path, exist_ok=True)
-    model.save_pretrained(adapter_path)
-    tokenizer.save_pretrained(adapter_path)
-    return LoRARequest("learner_lora", lora_id, adapter_path)
+    output_ids = model.generate(
+        **encoded,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        do_sample=temperature > 0,
+        use_cache=True,
+    )
+
+    results: list[tuple[str, list[int], list[int]]] = []
+    eos_id = tokenizer.eos_token_id
+    for i in range(len(messages_batch)):
+        pad_len = (encoded["attention_mask"][i] == 0).sum().item()
+        prompt_ids = output_ids[i, pad_len:input_len].tolist()
+        completion_ids = output_ids[i, input_len:].tolist()
+        if eos_id is not None and eos_id in completion_ids:
+            completion_ids = completion_ids[: completion_ids.index(eos_id) + 1]
+        text = tokenizer.decode(completion_ids, skip_special_tokens=True).strip()
+        results.append((text, prompt_ids, completion_ids))
+    return results
 
 
 def run_episode_group(
+    learner: AutoModelForCausalLM,
     engine: LLM,
     tokenizer: AutoTokenizer,
     scenario: Scenario,
@@ -314,12 +330,11 @@ def run_episode_group(
     max_new_tokens: int,
     learner_temperature: float = 1.0,
     opponent_temperature: float = 0.7,
-    lora_request: LoRARequest | None = None,
 ) -> list[Episode]:
     """Run ``group_size`` negotiation rollouts in parallel on one scenario.
 
-    The learner generates with the LoRA adapter (via *lora_request*) and the
-    opponent generates with the base model (no LoRA).
+    The learner generates on-policy via HuggingFace (PEFT model with LoRA)
+    and the opponent generates via vLLM (base model, no LoRA).
     """
     ids = scenario.agent_ids
     learner_id, opponent_id = (
@@ -358,13 +373,12 @@ def run_episode_group(
                         {"role": "user", "content": "Begin the negotiation."}
                     )
                 batch_msgs.append(learner_msgs[i])
-            results = generate_batch(
-                engine,
+            results = generate_batch_hf(
+                learner,
                 tokenizer,
                 batch_msgs,
                 learner_temperature,
                 max_new_tokens,
-                lora_request=lora_request,
             )
         else:
             batch_msgs = []
@@ -374,13 +388,12 @@ def run_episode_group(
                         {"role": "user", "content": "Begin the negotiation."}
                     )
                 batch_msgs.append(opponent_msgs[i])
-            results = generate_batch(
+            results = generate_batch_vllm(
                 engine,
                 tokenizer,
                 batch_msgs,
                 opponent_temperature,
                 max_new_tokens,
-                lora_request=None,
             )
 
         for pos, i in enumerate(active):
@@ -627,18 +640,14 @@ def train(cfg: dict) -> None:
     )
 
     vllm_cfg = cfg.get("vllm", {})
-    adapter_path = os.path.join(output_dir, "vllm-lora")
-    lora_request = sync_lora_weights(learner, tokenizer, adapter_path, lora_id=1)
     engine = create_vllm_engine(
         model_name=model_cfg["name"],
         dtype=model_cfg.get("dtype", "bfloat16"),
         max_model_len=int(vllm_cfg.get("max_model_len", 4096)),
-        gpu_memory_utilization=float(vllm_cfg.get("gpu_memory_utilization", 0.45)),
-        max_lora_rank=int(vllm_cfg.get("max_lora_rank", 64)),
+        gpu_memory_utilization=float(vllm_cfg.get("gpu_memory_utilization", 0.35)),
         tensor_parallel_size=int(vllm_cfg.get("tensor_parallel_size", 1)),
         enforce_eager=bool(vllm_cfg.get("enforce_eager", False)),
     )
-    lora_id = 1
 
     trainable = [p for p in learner.parameters() if p.requires_grad]
     logger.info(f"Trainable parameters: {sum(p.numel() for p in trainable) / 1e6:.1f}M")
@@ -677,6 +686,7 @@ def train(cfg: dict) -> None:
             for _ in range(groups_per_iter):
                 scenario = random.choice(scenarios)
                 group = run_episode_group(
+                    learner=learner,
                     engine=engine,
                     tokenizer=tokenizer,
                     scenario=scenario,
@@ -685,7 +695,6 @@ def train(cfg: dict) -> None:
                     max_new_tokens=max_new_tokens,
                     learner_temperature=learner_temp,
                     opponent_temperature=opponent_temp,
-                    lora_request=lora_request,
                 )
                 episode_groups.append(group)
 
@@ -695,14 +704,6 @@ def train(cfg: dict) -> None:
                 episode_groups=episode_groups,
                 kl_beta=kl_beta,
                 max_grad_norm=max_grad_norm,
-            )
-
-            lora_id += 1
-            lora_request = sync_lora_weights(
-                learner,
-                tokenizer,
-                adapter_path,
-                lora_id=lora_id,
             )
 
             outcomes: dict[str, int] = {}

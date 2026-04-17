@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=rlvr
+#SBATCH --job-name=rlvr-test
 #SBATCH -p public
 #SBATCH -q public
 #SBATCH -A grp_ywang354
-#SBATCH -t 8:00:00
-#SBATCH --gres=gpu:a100:2
+#SBATCH -t 4:00:00
+#SBATCH --gres=gpu:a100:4
 #SBATCH --constraint=a100_80
-#SBATCH --mem=128G
-#SBATCH -c 16
+#SBATCH --mem=256G
+#SBATCH -c 24
 #SBATCH --output=logs/jobs/slurm_%j.out
 #SBATCH --error=logs/jobs/slurm_%j.err
 
