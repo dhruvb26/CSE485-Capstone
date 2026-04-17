@@ -2,8 +2,8 @@ model:
   name: Qwen/Qwen3-30B-A3B-Instruct-2507
   dtype: bfloat16
   max_memory:
-    0: 42GiB
-    1: 42GiB
+    0: 36GiB
+    1: 36GiB
 
 lora:
   r: 16
@@ -42,7 +42,8 @@ training:
   save_every: 10
 
 vllm:
-  max_model_len: 4096
-  gpu_memory_utilization: 0.40
+  max_model_len: 3072
+  gpu_memory_utilization: 0.45
   tensor_parallel_size: 2
   max_lora_rank: 64
+  enforce_eager: true

@@ -235,12 +235,14 @@ def create_vllm_engine(
     gpu_memory_utilization: float = 0.45,
     max_lora_rank: int = 64,
     tensor_parallel_size: int = 1,
+    enforce_eager: bool = False,
 ) -> LLM:
     """Create a vLLM engine with LoRA support for fast generation."""
     logger.info(
-        "Creating vLLM engine (tp=%d, gpu_mem=%.2f)",
+        "Creating vLLM engine (tp=%d, gpu_mem=%.2f, eager=%s)",
         tensor_parallel_size,
         gpu_memory_utilization,
+        enforce_eager,
     )
     return LLM(
         model=model_name,
@@ -251,6 +253,7 @@ def create_vllm_engine(
         max_lora_rank=max_lora_rank,
         tensor_parallel_size=tensor_parallel_size,
         trust_remote_code=True,
+        enforce_eager=enforce_eager,
     )
 
 
@@ -633,6 +636,7 @@ def train(cfg: dict) -> None:
         gpu_memory_utilization=float(vllm_cfg.get("gpu_memory_utilization", 0.45)),
         max_lora_rank=int(vllm_cfg.get("max_lora_rank", 64)),
         tensor_parallel_size=int(vllm_cfg.get("tensor_parallel_size", 1)),
+        enforce_eager=bool(vllm_cfg.get("enforce_eager", False)),
     )
     lora_id = 1
 
