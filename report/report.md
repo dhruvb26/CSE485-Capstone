@@ -67,7 +67,7 @@ NegotiationArena [@bianchi2024negotiationarena] confirms this in live play. Init
 
 ## Domain and Data
 
-We train and evaluate on CaSiNo [@chawla2021casino], a corpus of 1,030 human-human negotiation dialogues in which two campsite neighbors divide three packages each of food, water, and firewood. Each participant is assigned a private priority ordering over the three item types, which maps to point values: high-priority items are worth 5 points, medium 4, and low 3, for a maximum of 15 points per agent. This setup is a clean instance of the symmetric multi-agent problem: two parties, a shared item pool, private utilities, and a well-defined terminal outcome. We train on the training split and report results on held-out test scenarios to check generalization.
+We train and evaluate on CaSiNo [@chawla2021casino], a corpus of 1,030 human-human negotiation dialogues in which two campsite neighbors divide three packages each of food, water, and firewood. Each participant is assigned a private priority ordering over the three item types, which maps to point values: high-priority items are worth 5 points, medium 4, and low 3. Because there are three packages of each item, the maximum score is 36 points per agent. This setup is a clean instance of the symmetric multi-agent problem: two parties, a shared item pool, private utilities, and a well-defined terminal outcome. We train on the training split and report results on held-out test scenarios to check generalization.
 
 ## Structured Output Format
 
