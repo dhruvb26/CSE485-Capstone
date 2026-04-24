@@ -7,6 +7,7 @@
 - [Datasets](#datasets)
 - [Charts](#charts)
 - [Report](#report)
+- [Reproducibility Checklist](#reproducibility-checklist)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
@@ -88,19 +89,27 @@ No manual `venv` activation needed — `uv run` handles it.
 Submit training jobs to the SOL cluster using the `scripts/rl.sh` script:
 
 ```bash
+mkdir -p logs/jobs
 sbatch scripts/rl.sh generate   # produce annotated SFT data via OpenAI-compatible API
-sbatch scripts/rl.sh train      # run SFT training with LoRA
+sbatch scripts/rl.sh sft        # run SFT training with LoRA
 sbatch scripts/rl.sh grpo       # run GRPO training
-sbatch scripts/rl.sh all        # run generate → train → grpo sequentially
+sbatch scripts/rl.sh pipeline   # run sft, then grpo
+sbatch scripts/rl.sh all        # run generate, then sft, then grpo
 ```
 
 Monitor job status and logs:
 
 ```bash
 squeue -u $USER                 # check job status
-cat logs/slurm_<job_id>.out     # view output
-cat logs/slurm_<job_id>.err     # view errors
+cat logs/jobs/slurm_<job_id>.out # view output
+cat logs/jobs/slurm_<job_id>.err # view errors
 ```
+
+The training configs reference checkpoints that are too large to commit. Before
+running GRPO or evaluation, confirm the expected checkpoint directories exist on
+SOL, especially `checkpoints/sft-tuned-2`,
+`checkpoints/grpo-annotated-0411-1/checkpoint-1200`, and
+`checkpoints/grpo-selfplay-0413-2`.
 
 ## Evaluation
 
@@ -142,7 +151,7 @@ tasks:
   - all
 ```
 
-Results are saved as JSON under `logs/eval/` (gitignored). See [`README.md`](eval/README.md) for all available tasks, metrics, and config options.
+Results are saved as JSON under `logs/eval/` (gitignored). See [`eval/README.md`](eval/README.md) for all available tasks, metrics, and config options.
 
 ## Datasets
 
@@ -215,6 +224,13 @@ pandoc report.md -o report.pdf --citeproc
 ```
 
 The YAML frontmatter in `report.md` handles all configuration (bibliography, citation style, layout). The `--citeproc` flag processes citations from `references.bib` using the IEEE style defined in `ieee.csl`.
+
+## Reproducibility Checklist
+
+Use [`docs/reproducibility.md`](docs/reproducibility.md) before submitting or
+rerunning experiments. It lists the canonical pipeline, required local smoke
+tests, SOL setup assumptions, checkpoint expectations, and commands used for
+training and evaluation.
 
 ## Troubleshooting
 
