@@ -25,10 +25,10 @@ unsloth_compiled_cache/
 
 # Other
 checkpoints/
+*.log
 
 # Slurm .out files
 *.out
 raw/
 
-# Agents
 CLAUDE.md

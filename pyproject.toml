@@ -3,7 +3,7 @@ name = "asu-ai-negotiation-agent"
 version = "0.0.0"
 description = "Post-run analysis tooling for negotiation-agent training"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 dependencies = [
     "trackio",
@@ -15,6 +15,10 @@ dependencies = [
     "loguru",
     "rich",
     "datasets>=4.8.4",
+    "tinker-cookbook>=0.3.0",
+    "python-dotenv>=1.2.2",
+    "wandb>=0.26.0",
+    "weave>=0.52.37",
 ]
 
 [project.optional-dependencies]

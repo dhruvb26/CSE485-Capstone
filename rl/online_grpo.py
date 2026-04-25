@@ -295,7 +295,9 @@ def generate_batch_hf(
     ]
     device = next(model.get_input_embeddings().parameters()).device
     encoded = tokenizer(
-        prompt_texts, return_tensors="pt", padding=True,
+        prompt_texts,
+        return_tensors="pt",
+        padding=True,
     ).to(device)
     input_len = encoded["input_ids"].shape[1]
 
@@ -670,7 +672,9 @@ def train(cfg: dict) -> None:
     num_iterations = int(tcfg["num_iterations"])
     groups_per_iter = int(tcfg["groups_per_iteration"])
     group_size = int(tcfg["group_size"])
-    max_turns = int(tcfg["max_turns"])
+    max_turns = (
+        int(tcfg["max_turns"]) * 2
+    )  # config counts rounds (paper convention); loop counts messages
     max_new_tokens = int(tcfg["max_new_tokens"])
     log_every = int(tcfg["log_every"])
     save_every = int(tcfg["save_every"])

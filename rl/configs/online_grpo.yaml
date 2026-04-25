@@ -19,11 +19,11 @@ training:
   csv_path: data/casino/ca.train.csv
   output_dir: checkpoints/online-grpo-qwen3-30b-a3b
 
-  num_iterations: 2
-  groups_per_iteration: 64
+  num_iterations: 50
+  groups_per_iteration: 16
   group_size: 8
 
-  max_turns: 12
+  max_turns: 6
   max_new_tokens: 300
   learner_temperature: 1.0
   opponent_temperature: 0.7
@@ -41,7 +41,7 @@ training:
   gradient_checkpointing: true
 
   log_every: 1
-  save_every: 10
+  save_every: 5
 
 vllm:
   max_model_len: 3072
