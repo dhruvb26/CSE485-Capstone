@@ -4,8 +4,8 @@
 #SBATCH -q public
 #SBATCH -A grp_ywang354
 #SBATCH -t 2-00:00:00
-#SBATCH -G a100:4
-#SBATCH -C a100_80
+#SBATCH --gres=gpu:a100:4
+#SBATCH --constraint=a100_80
 #SBATCH --mem-per-gpu=64G
 #SBATCH -c 24
 #SBATCH --output=logs/jobs/slurm_%j.out
