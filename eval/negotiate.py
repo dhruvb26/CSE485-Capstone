@@ -392,9 +392,11 @@ def run_episode(
         learner_id, opponent_id = opponent_id, learner_id
 
     learner_system = env.build_system_prompt(scenario, learner_id)
-    opponent_system = (
-        PERSONAS[persona] + "\n\n" + env.build_system_prompt(scenario, opponent_id)
-    )
+    base_opponent_system = env.build_system_prompt(scenario, opponent_id)
+    if persona and persona != "none" and persona in PERSONAS:
+        opponent_system = PERSONAS[persona] + "\n\n" + base_opponent_system
+    else:
+        opponent_system = base_opponent_system
 
     learner_msgs: list[dict] = [{"role": "system", "content": learner_system}]
     opponent_msgs: list[dict] = [{"role": "system", "content": opponent_system}]
@@ -594,11 +596,9 @@ def run_evaluation(cfg: dict) -> dict:
     seed = cfg.get("seed", 42)
     random.seed(seed)
 
-    persona_names = list(cfg.get("persona_weights", {p: 0.25 for p in PERSONAS}).keys())
-    persona_weights = [
-        cfg.get("persona_weights", {p: 0.25 for p in PERSONAS})[p]
-        for p in persona_names
-    ]
+    pw = cfg.get("persona_weights") or {}
+    persona_names = list(pw.keys()) if pw else ["none"]
+    persona_weights = list(pw.values()) if pw else [1.0]
 
     default_base_url = cfg.get("base_url", OPENAI_BASE_URL)
     default_api_key_env = cfg.get("api_key_env", "OPENAI_API_KEY")

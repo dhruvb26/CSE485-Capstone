@@ -1,29 +1,23 @@
-dataset: dnd
-csv_path: data/dnd/dnd.test.csv
+dataset: casino
+csv_path: data/casino/ca.test.csv
 num_episodes: 100
-max_turns: 14
+max_turns: 12
 temperature: 0.7
-top_p: 0.9
 seed: 42
 output_dir: logs/negotiate
 
-base_url: https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1
-api_key_env: TINKER_API_KEY
-
 persona_weights:
-  uncompromising: 0.25
-  selfish: 0.25
-  anchoring: 0.25
-  cooperative: 0.25
 
 matchups:
   - learner:
-      label: qwen3-14b-base
+      label: qwen3-4b-instruct-2507
       type: api
       base_url: http://localhost:8000/v1
       api_key_env: OPENAI_API_KEY
-      model: Qwen/Qwen3-14B-Instruct-2507
+      model: Qwen/Qwen3-4B-Instruct-2507
     opponent:
-      label: qwen3-30b-base
+      label: qwen3-30b-a3b-instruct-2507
       type: api
+      base_url: https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1
+      api_key_env: TINKER_API_KEY
       model: Qwen/Qwen3-30B-A3B-Instruct-2507
