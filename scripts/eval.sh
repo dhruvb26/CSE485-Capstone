@@ -23,8 +23,8 @@ set -euo pipefail
 # sbatch scripts/eval.sh negotiate path/to/cfg.yaml # run negotiate (custom config)
 # sbatch scripts/eval.sh negotiate score logs/negotiate/run_...  # score existing logs
 #
-# sbatch scripts/eval.sh vllm-tasks [MODEL] [CONFIG] # start vLLM server + run tasks
-# sbatch scripts/eval.sh vllm-negotiate MODEL [CONFIG] # start vLLM + run negotiate
+# sbatch scripts/eval.sh vllm-tasks [CONFIG]      # auto-detect local model, start vLLM + tasks
+# sbatch scripts/eval.sh vllm-negotiate [CONFIG]  # auto-detect local model, start vLLM + negotiate
 # --------------------------------------------------------------------------
 
 MODE="${1:-tasks}"
@@ -45,6 +45,28 @@ module load mamba/latest
 source activate /scratch/$USER/envs/venv
 
 PYTHON=python
+
+detect_local_model() {
+    local CONFIG="$1"
+    $PYTHON -c "
+import yaml, sys
+with open('$CONFIG') as f:
+    cfg = yaml.safe_load(f)
+for m in cfg.get('matchups', []):
+    for role in ('learner', 'opponent'):
+        agent = m.get(role, {})
+        url = agent.get('base_url', '')
+        if 'localhost' in url or '127.0.0.1' in url:
+            print(agent['model'])
+            sys.exit(0)
+for m in cfg.get('models', []):
+    if m.get('type') == 'vllm_model':
+        print(m.get('model_str', ''))
+        sys.exit(0)
+print('', file=sys.stderr)
+sys.exit(1)
+"
+}
 
 start_vllm() {
     local MODEL="$1"
@@ -112,31 +134,25 @@ case "$MODE" in
         ;;
 
     vllm-tasks)
-        MODEL="${1:-Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled}"
-        CONFIG="${2:-}"
+        CONFIG="${1:-$(dirname "$0")/../eval/configs/tasks.yaml}"
 
+        MODEL=$(detect_local_model "$CONFIG") || {
+            echo "ERROR: no localhost model found in $CONFIG"; exit 1
+        }
         start_vllm "$MODEL"
 
-        if [[ -z "$CONFIG" ]]; then
-            $PYTHON -m eval tasks
-        elif [[ "$CONFIG" == "score" ]]; then
-            $PYTHON -m eval tasks --evaluate-only
-        else
-            $PYTHON -m eval tasks --config "$CONFIG"
-        fi
+        $PYTHON -m eval tasks --config "$CONFIG"
         ;;
 
     vllm-negotiate)
-        MODEL="${1:?vllm-negotiate requires a MODEL argument}"
-        CONFIG="${2:-}"
+        CONFIG="${1:-$(dirname "$0")/../eval/configs/negotiate.yaml}"
 
+        MODEL=$(detect_local_model "$CONFIG") || {
+            echo "ERROR: no localhost model found in $CONFIG"; exit 1
+        }
         start_vllm "$MODEL"
 
-        if [[ -z "$CONFIG" ]]; then
-            $PYTHON -m eval negotiate
-        else
-            $PYTHON -m eval negotiate --config "$CONFIG"
-        fi
+        $PYTHON -m eval negotiate --config "$CONFIG"
         ;;
 
     *)
