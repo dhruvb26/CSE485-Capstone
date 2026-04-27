@@ -478,6 +478,8 @@ class CLIConfig:
     kl_penalty_coef: float = 0.0  # paper Table 5
     save_every: int = 10
     eval_every: int = 0
+    resume_run: str | None = None
+    load_checkpoint_path: str | None = None
     wandb_project: str | None = "agent-rlvr"
     trackio_project: str = "agent-rlvr"
     trackio_space_id: str = "dhruvb26/agent-rlvr"
@@ -488,7 +490,13 @@ def build_config(cli: CLIConfig) -> tuple[train.Config, str]:
     from datetime import datetime
 
     renderer_name = model_info.get_recommended_renderer_name(cli.model_name)
-    run_name = f"tinker-rlvr-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+    if cli.resume_run:
+        run_name = cli.resume_run
+        log_path = f"logs/tinker-negotiation/{run_name}"
+    else:
+        run_name = f"tinker-rlvr-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        log_path = f"logs/tinker-negotiation/{run_name}"
 
     dataset_builder = NegotiationDatasetBuilder(
         csv_path=cli.csv_path,
@@ -502,8 +510,6 @@ def build_config(cli: CLIConfig) -> tuple[train.Config, str]:
         eval_csv_path=cli.eval_csv_path,
     )
 
-    log_path = f"logs/tinker-negotiation/{run_name}"
-
     config = train.Config(
         model_name=cli.model_name,
         renderer_name=renderer_name,
@@ -515,6 +521,7 @@ def build_config(cli: CLIConfig) -> tuple[train.Config, str]:
         kl_penalty_coef=cli.kl_penalty_coef,
         save_every=cli.save_every,
         eval_every=cli.eval_every,
+        load_checkpoint_path=cli.load_checkpoint_path,
         wandb_project=cli.wandb_project,
         wandb_name=run_name if cli.wandb_project else None,
     )
@@ -579,9 +586,10 @@ if __name__ == "__main__":
         cli = chz.entrypoint(CLIConfig)
 
     config, run_name = build_config(cli)
-    cli_utils.check_log_dir(
-        config.log_path, behavior_if_exists=cli.behavior_if_log_dir_exists
-    )
+    if not cli.resume_run:
+        cli_utils.check_log_dir(
+            config.log_path, behavior_if_exists=cli.behavior_if_log_dir_exists
+        )
     asyncio.run(train.main(config))
     sync_to_trackio(
         config.log_path, cli.trackio_project, run_name, cli.trackio_space_id, cli

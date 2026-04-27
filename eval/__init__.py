@@ -7,3 +7,7 @@ Adapted from the EMNLP 2024 Findings paper:
 
 See eval/README.md for citation and usage details.
 """
+
+from dotenv import load_dotenv
+
+load_dotenv()

@@ -1,7 +1,7 @@
 model_name: Qwen/Qwen3-30B-A3B-Instruct-2507
 csv_path: data/casino/ca.train.csv
 
-num_epochs: 1
+num_epochs: 3
 batch_size: 64
 group_size: 8
 max_rounds: 6
@@ -14,6 +14,8 @@ kl_penalty_coef: 0.0
 
 save_every: 10
 eval_every: 0
+
+resume_run: tinker-rlvr-20260421-155903
 
 wandb_project: agent-rlvr
 trackio_project: agent-rlvr

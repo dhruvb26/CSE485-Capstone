@@ -40,7 +40,7 @@ tasks:
   - mid_gen_resp_dnd
   - end_deal_specifics_dnd
   - end_deal_total_dnd
-  # mid_full_proposal_dnd excluded: all proposal annotations are null in dnd_ann.test.csv
+  - mid_full_proposal_dnd
 
 num_instances: 200
 max_num_instances: 200

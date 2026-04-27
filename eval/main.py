@@ -2,7 +2,7 @@
 Main entry point for the SysEval negotiation LLM evaluation framework.
 
 Usage:
-    python -m eval                              # uses eval/config.yaml
+    python -m eval                              # uses eval/configs/tasks.yaml
     python -m eval --config path/to/config.yaml # custom config
     python -m eval --evaluate-only              # just score existing logs
     python -m eval --list-tasks                 # show available tasks
@@ -12,16 +12,21 @@ import argparse
 import os
 import re
 import sys
-import yaml
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
-from eval.registry import (
-    SUPPORTED_CONFIGS, CLS_NAME2PATHS, TASK_TO_DATASET,
-    get_tasks_for_dataset, get_all_task_names,
-)
-from eval.utils import dynamic_import, get_output_path
+import yaml
+
 from eval.metrics import EvaluationMetrics
+from eval.registry import (
+    CLS_NAME2PATHS,
+    SUPPORTED_CONFIGS,
+    TASK_TO_DATASET,
+    get_all_task_names,
+    get_tasks_for_dataset,
+)
+from eval.utils import dynamic_import
 
 
 def load_config(config_path):
@@ -105,7 +110,8 @@ def run_evaluation(config):
     """Run full evaluation: model inference + scoring."""
     model_cfgs = config.get("models", [])
     tasks = resolve_tasks(config.get("tasks", []))
-    storage_dir = config.get("storage_dir", "./logs/eval")
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    storage_dir = os.path.join(config.get("storage_dir", "./logs/eval"), f"run_{ts}")
 
     if not tasks:
         print("No tasks specified in config.", file=sys.stderr)
@@ -130,6 +136,7 @@ def run_evaluation(config):
         print(f"Model: {model_type} ({model_display})")
 
         args = build_args(config, model_cfg)
+        args.storage_dir = storage_dir
 
         # Initialize model once per model config
         model_cls = dynamic_import(CLS_NAME2PATHS["models"][model_type])
@@ -138,14 +145,15 @@ def run_evaluation(config):
         for dataset_name, task_names in dataset_tasks.items():
             # Check this model supports these tasks
             valid_tasks = [
-                t for t in task_names
+                t
+                for t in task_names
                 if (dataset_name, model_type, t) in SUPPORTED_CONFIGS
             ]
             if not valid_tasks:
                 continue
 
             print(f"\n  Dataset: {dataset_name}")
-            print(f"  {'-'*50}")
+            print(f"  {'-' * 50}")
 
             # Initialize dataset once per dataset
             dataset_cls = dynamic_import(CLS_NAME2PATHS["datasets"][dataset_name])
@@ -153,28 +161,17 @@ def run_evaluation(config):
 
             for tix, task_name in enumerate(valid_tasks):
                 # Check if output already exists
-                mname = _resolve_model_display_name(model_type, model_cfg)
-                if model_type != "open_ai":
-                    mname = mname.replace("/", "_")
-                out_path = get_output_path(
-                    storage_dir, dataset_name, mname,
-                    task_name, args.num_instances, args=args
-                )
-                if os.path.exists(out_path):
-                    print(f"    [{tix+1}/{len(valid_tasks)}] {task_name} -- already exists, skipping")
-                    continue
-
-                print(f"    [{tix+1}/{len(valid_tasks)}] {task_name} -- running...")
+                print(f"    [{tix + 1}/{len(valid_tasks)}] {task_name} -- running...")
 
                 task_cls = dynamic_import(CLS_NAME2PATHS["tasks"][task_name])
                 task_handler = task_cls(task_name, args)
                 task_handler.evaluate(dataset_handler, model_handler)
 
-                print(f"    [{tix+1}/{len(valid_tasks)}] {task_name} -- done")
+                print(f"    [{tix + 1}/{len(valid_tasks)}] {task_name} -- done")
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("Inference complete. Logs saved to:", storage_dir)
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     # Score the logs
     score_logs(storage_dir)
@@ -224,37 +221,32 @@ def score_logs(storage_dir):
         preds, gt = _ensure_format(preds, gt, metric)
 
         try:
-            score = evaluator.compute_metric(preds=preds, gt=gt, metric=metric, quiet=True)
+            score = evaluator.compute_metric(
+                preds=preds, gt=gt, metric=metric, quiet=True
+            )
         except Exception as exc:
-            print(f"  Warning: scoring failed for {path.name} ({metric}): {exc}", file=sys.stderr)
+            print(
+                f"  Warning: scoring failed for {path.name} ({metric}): {exc}",
+                file=sys.stderr,
+            )
             continue
 
         dataset, model = _parse_dataset_model_from_stem(stem, task)
 
-        results.append({
-            "dataset": dataset,
-            "model": model,
-            "task": task,
-            "metric": metric,
-            "score": score,
-            "n": len(gt),
-        })
+        results.append(
+            {
+                "dataset": dataset,
+                "model": model,
+                "task": task,
+                "metric": metric,
+                "score": score,
+                "n": len(gt),
+            }
+        )
 
-    if not results:
-        print("No evaluable logs found.")
-        return
+    from eval.display import print_task_scores
 
-    by_model = {}
-    for r in results:
-        key = (r["dataset"], r["model"])
-        by_model.setdefault(key, []).append(r)
-
-    for (dataset, model), rows in sorted(by_model.items()):
-        print(f"\n  {dataset} | {model}")
-        print(f"  {'-'*60}")
-        for r in sorted(rows, key=lambda x: x["task"]):
-            score_str = f"{r['score']:.4f}" if isinstance(r["score"], (int, float)) else str(r["score"])
-            print(f"    {r['task']:<45} {r['metric']:<22} {score_str}  (n={r['n']})")
+    print_task_scores(results)
 
 
 def _strip_optional_eval_suffixes(stem: str) -> str:
@@ -332,7 +324,7 @@ def list_available_tasks():
     print("=" * 60)
 
     datasets = {}
-    for (ds, model, task) in SUPPORTED_CONFIGS:
+    for ds, model, task in SUPPORTED_CONFIGS:
         datasets.setdefault(ds, set()).add(task)
 
     for ds in sorted(datasets.keys()):
@@ -346,16 +338,19 @@ def main():
         description="SysEval: Systematic Evaluation of LLM Negotiation Capabilities"
     )
     parser.add_argument(
-        "--config", type=str,
-        default=os.path.join(os.path.dirname(__file__), "config.yaml"),
+        "--config",
+        type=str,
+        default=os.path.join(os.path.dirname(__file__), "configs", "tasks.yaml"),
         help="Path to YAML config file",
     )
     parser.add_argument(
-        "--evaluate-only", action="store_true",
+        "--evaluate-only",
+        action="store_true",
         help="Only score existing logs (skip model inference)",
     )
     parser.add_argument(
-        "--list-tasks", action="store_true",
+        "--list-tasks",
+        action="store_true",
         help="List all available evaluation tasks and exit",
     )
     args = parser.parse_args()

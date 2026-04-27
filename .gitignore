@@ -30,5 +30,3 @@ checkpoints/
 # Slurm .out files
 *.out
 raw/
-
-CLAUDE.md

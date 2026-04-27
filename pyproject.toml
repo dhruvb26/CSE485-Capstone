@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "wandb>=0.26.0",
     "weave>=0.52.37",
+    "openai>=2.30.0",
 ]
 
 [project.optional-dependencies]

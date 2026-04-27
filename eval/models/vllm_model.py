@@ -1,7 +1,7 @@
 """
 vLLM model handler — uses the OpenAI-compatible API exposed by ``vllm serve``.
 
-Start the server first (see scripts/vllm_eval.sh), then point this handler
+Start the server first (see scripts/eval.sh vllm), then point this handler
 at it via config:
 
     - type: vllm_model
@@ -13,14 +13,14 @@ at it via config:
 
 import os
 import re
-from tqdm import tqdm
-from .base import BaseModelHandler
 
 from openai import OpenAI
+from tqdm import tqdm
+
+from .base import BaseModelHandler
 
 
 class VLLMModelHandler(BaseModelHandler):
-
     multishot = False
     cot = False
 
@@ -50,11 +50,15 @@ class VLLMModelHandler(BaseModelHandler):
 
         for index in tqdm(range(len(inputs))):
             raw_prompt = inputs[index]
-            prompt = raw_prompt.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
+            prompt = raw_prompt.encode("utf-8", errors="ignore").decode(
+                "utf-8", errors="ignore"
+            )
 
             ok, n_est = self.check_prompt(prompt)
             if not ok:
-                print(f"Length issue at {index}/{len(inputs)}: ~{n_est} tokens > {self.token_limit}")
+                print(
+                    f"Length issue at {index}/{len(inputs)}: ~{n_est} tokens > {self.token_limit}"
+                )
                 continue
 
             try:
@@ -65,9 +69,15 @@ class VLLMModelHandler(BaseModelHandler):
                     temperature=0,
                 )
                 output_text = gen_output.choices[0].message.content or ""
-                output_text = re.sub(r"<think>.*?</think>", "", output_text, flags=re.DOTALL).strip()
-                output_text = re.sub(r"<thought>.*?</thought>", "", output_text, flags=re.DOTALL).strip()
-                output_text = re.sub(r"<talk>.*?</talk>", "", output_text, flags=re.DOTALL).strip()
+                output_text = re.sub(
+                    r"<think>.*?</think>", "", output_text, flags=re.DOTALL
+                ).strip()
+                output_text = re.sub(
+                    r"<thought>.*?</thought>", "", output_text, flags=re.DOTALL
+                ).strip()
+                output_text = re.sub(
+                    r"<talk>.*?</talk>", "", output_text, flags=re.DOTALL
+                ).strip()
                 outputs[inputs[index]] = output_text
             except Exception as e:
                 print(f"Error at index {index}: {e}")
