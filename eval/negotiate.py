@@ -49,6 +49,11 @@ def extract_section(text: str, section: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+def strip_think_block(text: str) -> str:
+    """Remove <think>...</think> blocks emitted by Qwen3 thinking mode."""
+    return re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL).strip()
+
+
 def strip_thought(text: str) -> str:
     return re.sub(
         r"(?:^|\n)\s*Thought\s*:.*?(?=\n\s*(?:Talk|Action)\s*:|\Z)",
@@ -276,10 +281,17 @@ def generate_turn(
     temperature: float = 0.7,
     top_p: float = 0.9,
     max_new_tokens: int = 512,
+    thinking: bool = True,
 ) -> str:
-    prompt_text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
+    try:
+        prompt_text = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True,
+            enable_thinking=thinking,
+        )
+    except TypeError:
+        prompt_text = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True,
+        )
     inputs = tokenizer(prompt_text, return_tensors="pt").to(model.device)
     with torch.no_grad():
         outputs = model.generate(
@@ -291,7 +303,9 @@ def generate_turn(
             pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
         )
     new_tokens = outputs[0][inputs["input_ids"].shape[1] :]
-    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+    return strip_think_block(
+        tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+    )
 
 
 OPENAI_BASE_URL = "https://api.openai.com/v1"
@@ -301,33 +315,47 @@ TINKER_BASE_URL = "https://tinker.thinkingmachines.dev/services/tinker-prod/oai/
 class APIGenerator:
     """Generates responses via an OpenAI-compatible chat API."""
 
-    def __init__(self, model: str, base_url: str, api_key: str, max_tokens: int = 512):
+    def __init__(
+        self,
+        model: str,
+        base_url: str,
+        api_key: str,
+        max_tokens: int = 512,
+        thinking: bool = True,
+    ):
         from openai import OpenAI
 
         self.client = OpenAI(base_url=base_url, api_key=api_key)
         self.model = model
         self.max_tokens = max_tokens
+        self.thinking = thinking
 
     def __call__(
         self, messages: list[dict], temperature: float = 0.7, top_p: float = 0.9
     ) -> str:
-        resp = self.client.chat.completions.create(
+        kwargs: dict = dict(
             model=self.model,
             messages=messages,
             max_tokens=self.max_tokens,
             temperature=temperature,
             top_p=top_p,
         )
-        return resp.choices[0].message.content.strip()
+        if not self.thinking:
+            kwargs["extra_body"] = {
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
+        resp = self.client.chat.completions.create(**kwargs)
+        return strip_think_block(resp.choices[0].message.content.strip())
 
 
 class LocalGenerator:
     """Generates responses via a locally loaded HuggingFace model."""
 
-    def __init__(self, model, tokenizer, max_new_tokens: int = 512):
+    def __init__(self, model, tokenizer, max_new_tokens: int = 512, thinking: bool = True):
         self.model = model
         self.tokenizer = tokenizer
         self.max_new_tokens = max_new_tokens
+        self.thinking = thinking
 
     def __call__(
         self, messages: list[dict], temperature: float = 0.7, top_p: float = 0.9
@@ -339,6 +367,7 @@ class LocalGenerator:
             temperature,
             top_p,
             self.max_new_tokens,
+            thinking=self.thinking,
         )
 
 
@@ -353,6 +382,7 @@ def make_generator(
     *default_** kwargs so individual agents only need to override when they
     differ from the global setting.
     """
+    thinking = agent_cfg.get("thinking", True)
     if agent_cfg.get("type", "local") == "api":
         api_key_env = agent_cfg.get("api_key_env", default_api_key_env)
         api_key = os.getenv(api_key_env, "")
@@ -364,13 +394,16 @@ def make_generator(
             base_url=base_url,
             api_key=api_key,
             max_tokens=agent_cfg.get("max_tokens", 512),
+            thinking=thinking,
         )
     model, tok = load_model_and_tokenizer(
         agent_cfg["model_path"],
         agent_cfg.get("base_model"),
         agent_cfg.get("dtype", "bfloat16"),
     )
-    return LocalGenerator(model, tok, max_new_tokens=agent_cfg.get("max_tokens", 512))
+    return LocalGenerator(
+        model, tok, max_new_tokens=agent_cfg.get("max_tokens", 512), thinking=thinking,
+    )
 
 
 def run_episode(

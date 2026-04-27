@@ -6,15 +6,30 @@ temperature: 0.7
 seed: 42
 output_dir: logs/negotiate
 
+# Qwen3 (all support think / no-think via `thinking: true|false` per agent):
+#   Qwen/Qwen3-30B-A3B-Instruct-2507        (MoE, 3B active)
+#   Qwen/Qwen3-4B-Instruct-2507             (dense, 4B)
+#   Qwen/Qwen3-235B-A22B-Instruct-2507      (MoE, 22B active — API only)
+# Qwen2.5:
+#   Qwen/Qwen2.5-14B-Instruct               (dense, 14B)
+#   Qwen/Qwen2.5-32B-Instruct               (dense, 32B)
+#   Qwen/Qwen2.5-72B-Instruct               (dense, 72B)
+# Llama (text-only):
+#   meta-llama/Llama-3.3-70B-Instruct        (dense, 70B — latest text-only Llama)
+#   meta-llama/Llama-3.1-8B-Instruct         (dense, 8B)
+
 persona_weights:
 
 matchups:
+  # thinking: true (default) = model uses <think> block before responding
+  # thinking: false = model skips internal reasoning, responds directly
   - learner:
-      label: qwen3-4b-instruct-2507
+      label: qwen3-4b-instruct-2507-nothink
       type: api
       base_url: http://localhost:8000/v1
       api_key_env: OPENAI_API_KEY
       model: Qwen/Qwen3-4B-Instruct-2507
+      thinking: false
     opponent:
       label: qwen3-30b-a3b-instruct-2507
       type: api

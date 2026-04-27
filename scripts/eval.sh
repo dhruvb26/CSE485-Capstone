@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=eval
-#SBATCH -p public
+#SBATCH -p htc
 #SBATCH -q public
 #SBATCH -A grp_ywang354
 #SBATCH -t 3:00:00
