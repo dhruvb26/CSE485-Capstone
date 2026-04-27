@@ -24,12 +24,12 @@ matchups:
   # thinking: true (default) = model uses <think> block before responding
   # thinking: false = model skips internal reasoning, responds directly
   - learner:
-      label: qwen3-4b-instruct-2507-nothink
+      label: qwen3-4b-instruct-2507-think
       type: api
       base_url: http://localhost:8000/v1
       api_key_env: OPENAI_API_KEY
       model: Qwen/Qwen3-4B-Instruct-2507
-      thinking: false
+      thinking: true
     opponent:
       label: qwen3-30b-a3b-instruct-2507
       type: api

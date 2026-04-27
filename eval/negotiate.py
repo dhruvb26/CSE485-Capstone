@@ -345,7 +345,12 @@ class APIGenerator:
         if not self.thinking:
             kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
         resp = self.client.chat.completions.create(**kwargs)
-        return resp.choices[0].message.content.strip()
+        msg = resp.choices[0].message
+        content = (msg.content or "").strip()
+        reasoning = getattr(msg, "reasoning_content", None) or ""
+        if reasoning:
+            return f"<think>{reasoning}</think>\n{content}"
+        return content
 
 
 class LocalGenerator:

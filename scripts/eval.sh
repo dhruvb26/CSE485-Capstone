@@ -4,9 +4,8 @@
 #SBATCH -q public
 #SBATCH -A grp_ywang354
 #SBATCH -t 3:00:00
-#SBATCH --gres=gpu:a100:1
-#SBATCH --constraint=a100_80
-#SBATCH --mem=64G
+#SBATCH --gres=gpu:a30:1
+#SBATCH --mem=32G
 #SBATCH -c 8
 #SBATCH --output=logs/jobs/slurm_%j.out
 #SBATCH --error=logs/jobs/slurm_%j.err
@@ -44,7 +43,7 @@ module load cuda-12.6.1-gcc-12.1.0
 module load mamba/latest
 source activate /scratch/$USER/envs/venv
 
-PYTHON=python
+PYTHON=/scratch/$USER/envs/venv/bin/python
 
 detect_local_model() {
     local CONFIG="$1"
