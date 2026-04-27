@@ -285,12 +285,16 @@ def generate_turn(
 ) -> str:
     try:
         prompt_text = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True,
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
             enable_thinking=thinking,
         )
     except TypeError:
         prompt_text = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True,
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
         )
     inputs = tokenizer(prompt_text, return_tensors="pt").to(model.device)
     with torch.no_grad():
@@ -303,9 +307,7 @@ def generate_turn(
             pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
         )
     new_tokens = outputs[0][inputs["input_ids"].shape[1] :]
-    return strip_think_block(
-        tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
-    )
+    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
 OPENAI_BASE_URL = "https://api.openai.com/v1"
@@ -341,17 +343,17 @@ class APIGenerator:
             top_p=top_p,
         )
         if not self.thinking:
-            kwargs["extra_body"] = {
-                "chat_template_kwargs": {"enable_thinking": False}
-            }
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
         resp = self.client.chat.completions.create(**kwargs)
-        return strip_think_block(resp.choices[0].message.content.strip())
+        return resp.choices[0].message.content.strip()
 
 
 class LocalGenerator:
     """Generates responses via a locally loaded HuggingFace model."""
 
-    def __init__(self, model, tokenizer, max_new_tokens: int = 512, thinking: bool = True):
+    def __init__(
+        self, model, tokenizer, max_new_tokens: int = 512, thinking: bool = True
+    ):
         self.model = model
         self.tokenizer = tokenizer
         self.max_new_tokens = max_new_tokens
@@ -402,7 +404,10 @@ def make_generator(
         agent_cfg.get("dtype", "bfloat16"),
     )
     return LocalGenerator(
-        model, tok, max_new_tokens=agent_cfg.get("max_tokens", 512), thinking=thinking,
+        model,
+        tok,
+        max_new_tokens=agent_cfg.get("max_tokens", 512),
+        thinking=thinking,
     )
 
 
@@ -455,12 +460,13 @@ def run_episode(
                 learner_msgs.append(
                     {"role": "user", "content": "Begin the negotiation."}
                 )
-            response = learner_gen(learner_msgs, temperature, top_p)
-            learner_msgs.append({"role": "assistant", "content": response})
+            raw_response = learner_gen(learner_msgs, temperature, top_p)
+            learner_msgs.append({"role": "assistant", "content": raw_response})
+            cleaned = strip_think_block(raw_response)
             opponent_msgs.append(
                 {
                     "role": "user",
-                    "content": env.flip_deal(strip_thought(response), scenario),
+                    "content": env.flip_deal(strip_thought(cleaned), scenario),
                 }
             )
         else:
@@ -468,30 +474,29 @@ def run_episode(
                 opponent_msgs.append(
                     {"role": "user", "content": "Begin the negotiation."}
                 )
-            response = opponent_gen(opponent_msgs, temperature, top_p)
-            opponent_msgs.append({"role": "assistant", "content": response})
+            raw_response = opponent_gen(opponent_msgs, temperature, top_p)
+            opponent_msgs.append({"role": "assistant", "content": raw_response})
+            cleaned = strip_think_block(raw_response)
             learner_msgs.append(
                 {
                     "role": "user",
-                    "content": env.flip_deal(strip_thought(response), scenario),
+                    "content": env.flip_deal(strip_thought(cleaned), scenario),
                 }
             )
 
-        thought = extract_section(response, "Thought")
-        talk = extract_section(response, "Talk")
-        action = extract_section(response, "Action")
+        thought = extract_section(cleaned, "Thought")
+        talk = extract_section(cleaned, "Talk")
+        action = extract_section(cleaned, "Action")
 
         format_ok = False
         malformed_deal = False
         if thought is not None and talk is not None and action is not None:
             try:
                 order_ok = (
-                    re.search(
-                        r"(?:^|\n)\s*Thought\s*:", response, re.IGNORECASE
-                    ).start()
-                    < re.search(r"(?:^|\n)\s*Talk\s*:", response, re.IGNORECASE).start()
+                    re.search(r"(?:^|\n)\s*Thought\s*:", cleaned, re.IGNORECASE).start()
+                    < re.search(r"(?:^|\n)\s*Talk\s*:", cleaned, re.IGNORECASE).start()
                     < re.search(
-                        r"(?:^|\n)\s*Action\s*:", response, re.IGNORECASE
+                        r"(?:^|\n)\s*Action\s*:", cleaned, re.IGNORECASE
                     ).start()
                 )
             except (ValueError, AttributeError):
@@ -565,7 +570,7 @@ def run_episode(
         for msg in reversed(learner_msgs):
             if msg["role"] != "assistant":
                 continue
-            a = extract_section(msg["content"], "Action")
+            a = extract_section(strip_think_block(msg["content"]), "Action")
             if a and "[SUBMIT_DEAL]" in a:
                 recent_deals.append(a)
             if len(recent_deals) >= 3:
