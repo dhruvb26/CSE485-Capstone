@@ -114,10 +114,8 @@ class EpisodeResult:
     who_terminated: str = ""
     learner_total_turns: int = 0
     learner_format_ok: int = 0
-    learner_malformed_deals: int = 0
     opponent_total_turns: int = 0
     opponent_format_ok: int = 0
-    opponent_malformed_deals: int = 0
 
 
 @dataclass
@@ -135,10 +133,8 @@ class AggregateMetrics:
 
     learner_total_turns: int = 0
     learner_format_ok: int = 0
-    learner_malformed_deals: int = 0
     opponent_total_turns: int = 0
     opponent_format_ok: int = 0
-    opponent_malformed_deals: int = 0
 
     def add(self, ep: EpisodeResult):
         self.total_episodes += 1
@@ -146,10 +142,8 @@ class AggregateMetrics:
 
         self.learner_total_turns += ep.learner_total_turns
         self.learner_format_ok += ep.learner_format_ok
-        self.learner_malformed_deals += ep.learner_malformed_deals
         self.opponent_total_turns += ep.opponent_total_turns
         self.opponent_format_ok += ep.opponent_format_ok
-        self.opponent_malformed_deals += ep.opponent_malformed_deals
 
         if ep.outcome == "deal":
             self.deal_count += 1
@@ -230,11 +224,7 @@ class AggregateMetrics:
             "reject_loop_count": self.reject_loop_count,
             "max_turns_count": self.max_turns_count,
             "learner_format_rate": round(self.learner_format_ok / lt, 3),
-            "learner_malformed_deal_rate": round(self.learner_malformed_deals / lt, 3),
             "opponent_format_rate": round(self.opponent_format_ok / ot, 3),
-            "opponent_malformed_deal_rate": round(
-                self.opponent_malformed_deals / ot, 3
-            ),
             "learner_total_turns": self.learner_total_turns,
             "opponent_total_turns": self.opponent_total_turns,
         }
@@ -495,7 +485,6 @@ def run_episode(
         action = extract_section(cleaned, "Action")
 
         format_ok = False
-        malformed_deal = False
         if thought is not None and talk is not None and action is not None:
             try:
                 order_ok = (
@@ -512,8 +501,6 @@ def run_episode(
                 if re.search(r"\[SUBMIT_DEAL\]", action, re.IGNORECASE):
                     deal = env.parse_deal(action)
                     format_ok = env.validate_deal(deal, scenario)
-                    if not format_ok:
-                        malformed_deal = True
                 elif re.fullmatch(
                     r"\s*\[(TALK|ACCEPT_DEAL|REJECT_DEAL|WALK_AWAY)\]\s*",
                     action,
@@ -529,14 +516,12 @@ def run_episode(
             result.learner_total_turns += 1
             if format_ok:
                 result.learner_format_ok += 1
-            if malformed_deal:
-                result.learner_malformed_deals += 1
+            learner_msgs[-1]["format_ok"] = format_ok
         else:
             result.opponent_total_turns += 1
             if format_ok:
                 result.opponent_format_ok += 1
-            if malformed_deal:
-                result.opponent_malformed_deals += 1
+            opponent_msgs[-1]["format_ok"] = format_ok
 
         if action:
             parsed_deal = env.parse_deal(action)
@@ -623,10 +608,52 @@ def format_dialogue(ep: EpisodeResult) -> str:
     return "\n".join(lines)
 
 
+DEFAULT_DATA_PATHS: dict[str, str] = {
+    "casino": "data/casino/ca.test.csv",
+    "dnd": "data/dnd/dnd.test.csv",
+    "amazon": "data/amazon_history_price",
+    "craigslist": "data/craigslist_bargains/test.json",
+    "ji": "data/ji/ji.test.json",
+}
+
+
+def _resolve_datasets(cfg: dict) -> list[dict]:
+    """Resolve the datasets list from config, supporting both old and new formats.
+
+    Old format (single dataset):
+        dataset: casino
+        csv_path: data/casino/ca.test.csv
+
+    New format (multi-dataset):
+        datasets:
+          - name: ji
+          - name: amazon
+            data_path: data/amazon_history_price
+    """
+    if "datasets" in cfg:
+        resolved = []
+        for entry in cfg["datasets"]:
+            if isinstance(entry, str):
+                entry = {"name": entry}
+            name = entry["name"]
+            data_path = entry.get("data_path", DEFAULT_DATA_PATHS.get(name))
+            if not data_path:
+                raise ValueError(
+                    f"No data_path for dataset {name!r} and no default known. "
+                    f"Known defaults: {list(DEFAULT_DATA_PATHS)}"
+                )
+            resolved.append({"name": name, "data_path": data_path})
+        return resolved
+
+    name = cfg.get("dataset", "casino")
+    data_path = cfg.get(
+        "csv_path", cfg.get("data_path", DEFAULT_DATA_PATHS.get(name, ""))
+    )
+    return [{"name": name, "data_path": data_path}]
+
+
 def run_evaluation(cfg: dict) -> dict:
-    dataset = cfg.get("dataset", "casino")
-    env = get_env(dataset)
-    logger.info(f"Negotiation dataset: {dataset}")
+    dataset_specs = _resolve_datasets(cfg)
 
     ts = time.strftime("%Y%m%d_%H%M%S")
     output_dir = (
@@ -635,15 +662,11 @@ def run_evaluation(cfg: dict) -> dict:
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    scenarios = env.load_scenarios(cfg["csv_path"])
-    logger.info(f"Loaded {len(scenarios)} scenarios from {cfg['csv_path']}")
-
     num_episodes = cfg.get("num_episodes", 200)
     max_turns = cfg.get("max_turns", 18)
     temperature = cfg.get("temperature", 0.7)
     top_p = cfg.get("top_p", 0.9)
     seed = cfg.get("seed", 42)
-    random.seed(seed)
 
     pw = cfg.get("persona_weights") or {}
     persona_names = list(pw.keys()) if pw else ["none"]
@@ -656,95 +679,112 @@ def run_evaluation(cfg: dict) -> dict:
     all_results: dict[str, list[EpisodeResult]] = {}
     all_summaries: dict[str, dict] = {}
 
-    for matchup in matchups:
-        learner_cfg = matchup["learner"]
-        opponent_cfg = matchup["opponent"]
-        matchup_name = f"{learner_cfg['label']}_vs_{opponent_cfg['label']}"
-        logger.info(f"\n{'#' * 60}\nMatchup: {matchup_name}\n{'#' * 60}")
+    for ds_spec in dataset_specs:
+        dataset = ds_spec["name"]
+        data_path = ds_spec["data_path"]
+        env = get_env(dataset)
+        scenarios = env.load_scenarios(data_path)
+        logger.info(f"Dataset: {dataset} — {len(scenarios)} scenarios from {data_path}")
 
-        learner_gen = make_generator(learner_cfg, default_base_url, default_api_key_env)
+        random.seed(seed)
 
-        both_local = (
-            learner_cfg.get("type", "local") == "local"
-            and opponent_cfg.get("type", "local") == "local"
-        )
-        same_local_model = both_local and opponent_cfg.get(
-            "model_path"
-        ) == learner_cfg.get("model_path")
-        if same_local_model:
-            opponent_gen = learner_gen
-            logger.info("Opponent is same model as learner — sharing weights")
-        else:
-            opponent_gen = make_generator(
-                opponent_cfg, default_base_url, default_api_key_env
+        for matchup in matchups:
+            learner_cfg = matchup["learner"]
+            opponent_cfg = matchup["opponent"]
+            matchup_name = f"{learner_cfg['label']}_vs_{opponent_cfg['label']}"
+            run_key = f"{dataset}/{matchup_name}"
+            logger.info(f"\n{'#' * 60}\n{run_key}\n{'#' * 60}")
+
+            learner_gen = make_generator(
+                learner_cfg, default_base_url, default_api_key_env
             )
 
-        sampled_scenarios = random.choices(scenarios, k=num_episodes)
-        sampled_personas = random.choices(
-            persona_names, weights=persona_weights, k=num_episodes
-        )
-
-        overall = AggregateMetrics()
-        per_persona: dict[str, AggregateMetrics] = defaultdict(AggregateMetrics)
-        episodes: list[EpisodeResult] = []
-
-        t0 = time.time()
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            transient=True,
-        ) as progress:
-            task = progress.add_task(matchup_name, total=num_episodes)
-            for i, (scenario, persona) in enumerate(
-                zip(sampled_scenarios, sampled_personas)
-            ):
-                ep = run_episode(
-                    env=env,
-                    learner_gen=learner_gen,
-                    opponent_gen=opponent_gen,
-                    scenario=scenario,
-                    agent_ids=scenario["agent_ids"],
-                    persona=persona,
-                    episode_id=i,
-                    learner_label=learner_cfg["label"],
-                    opponent_label=opponent_cfg["label"],
-                    max_turns=max_turns,
-                    temperature=temperature,
-                    top_p=top_p,
+            both_local = (
+                learner_cfg.get("type", "local") == "local"
+                and opponent_cfg.get("type", "local") == "local"
+            )
+            same_local_model = both_local and opponent_cfg.get(
+                "model_path"
+            ) == learner_cfg.get("model_path")
+            if same_local_model:
+                opponent_gen = learner_gen
+                logger.info("Opponent is same model as learner — sharing weights")
+            else:
+                opponent_gen = make_generator(
+                    opponent_cfg, default_base_url, default_api_key_env
                 )
-                episodes.append(ep)
-                overall.add(ep)
-                per_persona[ep.persona].add(ep)
-                progress.advance(task)
 
-        elapsed = time.time() - t0
-        logger.info(f"Finished {matchup_name} in {elapsed:.1f}s")
+            sampled_scenarios = random.choices(scenarios, k=num_episodes)
+            sampled_personas = random.choices(
+                persona_names, weights=persona_weights, k=num_episodes
+            )
 
-        per_persona_summaries = {p: m.summary() for p, m in sorted(per_persona.items())}
-        matchup_summary = {
-            "matchup": matchup_name,
-            "dataset": dataset,
-            "learner": learner_cfg["label"],
-            "opponent": opponent_cfg["label"],
-            "overall": overall.summary(),
-            "per_persona": per_persona_summaries,
-            "elapsed_seconds": round(elapsed, 1),
-        }
-        all_summaries[matchup_name] = matchup_summary
-        all_results[matchup_name] = episodes
+            overall = AggregateMetrics()
+            per_persona: dict[str, AggregateMetrics] = defaultdict(AggregateMetrics)
+            episodes: list[EpisodeResult] = []
 
-        _save_matchup(output_dir, matchup_name, matchup_summary, episodes)
+            t0 = time.time()
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                transient=True,
+            ) as progress:
+                task = progress.add_task(
+                    f"{dataset} | {matchup_name}", total=num_episodes
+                )
+                for i, (scenario, persona) in enumerate(
+                    zip(sampled_scenarios, sampled_personas)
+                ):
+                    ep = run_episode(
+                        env=env,
+                        learner_gen=learner_gen,
+                        opponent_gen=opponent_gen,
+                        scenario=scenario,
+                        agent_ids=scenario["agent_ids"],
+                        persona=persona,
+                        episode_id=i,
+                        learner_label=learner_cfg["label"],
+                        opponent_label=opponent_cfg["label"],
+                        max_turns=max_turns,
+                        temperature=temperature,
+                        top_p=top_p,
+                    )
+                    episodes.append(ep)
+                    overall.add(ep)
+                    per_persona[ep.persona].add(ep)
+                    progress.advance(task)
 
-        if isinstance(learner_gen, LocalGenerator):
-            del learner_gen.model
-            if not same_local_model and isinstance(opponent_gen, LocalGenerator):
-                del opponent_gen.model
-            if torch is not None:
-                torch.cuda.empty_cache()
+            elapsed = time.time() - t0
+            logger.info(f"Finished {run_key} in {elapsed:.1f}s")
 
-        print_matchup_report(matchup_summary)
+            per_persona_summaries = {
+                p: m.summary() for p, m in sorted(per_persona.items())
+            }
+            matchup_summary = {
+                "matchup": matchup_name,
+                "dataset": dataset,
+                "learner": learner_cfg["label"],
+                "opponent": opponent_cfg["label"],
+                "overall": overall.summary(),
+                "per_persona": per_persona_summaries,
+                "elapsed_seconds": round(elapsed, 1),
+            }
+            all_summaries[run_key] = matchup_summary
+            all_results[run_key] = episodes
+
+            save_dir = output_dir / dataset
+            _save_matchup(save_dir, matchup_name, matchup_summary, episodes, dataset)
+
+            if isinstance(learner_gen, LocalGenerator):
+                del learner_gen.model
+                if not same_local_model and isinstance(opponent_gen, LocalGenerator):
+                    del opponent_gen.model
+                if torch is not None:
+                    torch.cuda.empty_cache()
+
+            print_matchup_report(matchup_summary)
 
     with open(output_dir / "summary.json", "w") as f:
         json.dump(all_summaries, f, indent=2)
@@ -758,6 +798,7 @@ def _save_matchup(
     matchup_name: str,
     matchup_summary: dict,
     episodes: list[EpisodeResult],
+    dataset: str = "",
 ) -> None:
     matchup_dir = output_dir / matchup_name
     matchup_dir.mkdir(parents=True, exist_ok=True)
@@ -778,10 +819,8 @@ def _save_matchup(
             "opponent_agent_id": ep.opponent_agent_id,
             "learner_format_ok": ep.learner_format_ok,
             "learner_total_turns": ep.learner_total_turns,
-            "learner_malformed_deals": ep.learner_malformed_deals,
             "opponent_format_ok": ep.opponent_format_ok,
             "opponent_total_turns": ep.opponent_total_turns,
-            "opponent_malformed_deals": ep.opponent_malformed_deals,
             "learner_messages": ep.learner_messages,
             "opponent_messages": ep.opponent_messages,
         }
@@ -790,14 +829,13 @@ def _save_matchup(
     with open(matchup_dir / "episodes.json", "w") as f:
         json.dump(serializable_episodes, f, indent=2)
 
-    outcomes_seen: dict[str, list[EpisodeResult]] = defaultdict(list)
-    for ep in episodes:
-        outcomes_seen[ep.outcome].append(ep)
+    from .render import render_episodes_html
 
-    for outcome, eps in outcomes_seen.items():
-        with open(matchup_dir / f"dialogues_{outcome}.txt", "w") as f:
-            for ep in eps:
-                f.write(format_dialogue(ep))
+    html_content = render_episodes_html(
+        serializable_episodes, title=matchup_name, dataset=dataset
+    )
+    with open(matchup_dir / "episodes.html", "w") as f:
+        f.write(html_content)
 
 
 def score_negotiate_logs(log_dir: str) -> dict:
@@ -855,10 +893,8 @@ def score_negotiate_logs(log_dir: str) -> dict:
                 who_terminated=raw.get("who_terminated", ""),
                 learner_total_turns=raw.get("learner_total_turns", 0),
                 learner_format_ok=raw.get("learner_format_ok", 0),
-                learner_malformed_deals=raw.get("learner_malformed_deals", 0),
                 opponent_total_turns=raw.get("opponent_total_turns", 0),
                 opponent_format_ok=raw.get("opponent_format_ok", 0),
-                opponent_malformed_deals=raw.get("opponent_malformed_deals", 0),
             )
             overall.add(ep)
             per_persona[ep.persona].add(ep)

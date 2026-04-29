@@ -48,13 +48,7 @@ def print_matchup_report(summary: dict) -> None:
         f"Learner format:    {_fmt(o.get('learner_format_rate'), '.1%')}  ({o.get('learner_total_turns', 0)} turns)\n"
     )
     lines.append(
-        f"Learner bad deals: {_fmt(o.get('learner_malformed_deal_rate'), '.1%')}\n"
-    )
-    lines.append(
         f"Opponent format:   {_fmt(o.get('opponent_format_rate'), '.1%')}  ({o.get('opponent_total_turns', 0)} turns)\n"
-    )
-    lines.append(
-        f"Opponent bad deals:{_fmt(o.get('opponent_malformed_deal_rate'), '.1%')}\n"
     )
 
     title = summary.get("matchup", "")

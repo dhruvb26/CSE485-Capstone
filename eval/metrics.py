@@ -12,12 +12,16 @@ Metrics:
 """
 
 import os
-import numpy as np
-from typing import List
 from collections import Counter
-from sklearn.metrics import accuracy_score, classification_report
+from typing import List
+
+import numpy as np
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    multilabel_confusion_matrix,
+)
 from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.metrics import multilabel_confusion_matrix
 
 from eval.utils import json_loader
 
@@ -56,10 +60,14 @@ class EvaluationMetrics:
         preds_clean = [str(p).strip() or "." for p in preds]
         gt_clean = [str(g).strip() or "." for g in gt]
 
-        rouge_result = rouge_metric.compute(predictions=preds_clean, references=gt_clean)
+        rouge_result = rouge_metric.compute(
+            predictions=preds_clean, references=gt_clean
+        )
         rouge_result = {k: round(v, 2) for k, v in rouge_result.items()}
 
-        bleu_result = bleu_metric.compute(predictions=preds_clean, references=gt_clean, max_order=1)
+        bleu_result = bleu_metric.compute(
+            predictions=preds_clean, references=gt_clean, max_order=1
+        )
         bleu_result = {k: v for k, v in bleu_result.items()}
 
         return f"BLEU({bleu_result['bleu']})/Rouge({rouge_result['rouge1']})"
@@ -90,7 +98,9 @@ class EvaluationMetrics:
         return average_f1
 
     def elementwise_accuracy_score(self, gt: List, preds: List):
-        assert len(gt) == len(preds), "length of ground truth and prediction should be same"
+        assert len(gt) == len(preds), (
+            "length of ground truth and prediction should be same"
+        )
         return np.mean(
             [
                 str(val) == str(_pred.get(item, "None"))
@@ -102,7 +112,9 @@ class EvaluationMetrics:
     @staticmethod
     def get_eval_method_by_task():
         """Return a dict mapping task_name -> metric_name."""
-        tasktype_path = os.path.join(os.path.dirname(__file__), "tasks", "TASKTYPE.json")
+        tasktype_path = os.path.join(
+            os.path.dirname(__file__), "tasks", "TASKTYPE.json"
+        )
         task_class = json_loader(tasktype_path)["T5"]
 
         evaluation_method = {}
@@ -118,7 +130,10 @@ class EvaluationMetrics:
                 evaluation_method[t] = "f1_per_class"
 
         # Dialog act (multi-output) -> f1_per_class
-        if "multi_outputs" in task_class and "dialog_act" in task_class["multi_outputs"]:
+        if (
+            "multi_outputs" in task_class
+            and "dialog_act" in task_class["multi_outputs"]
+        ):
             for t in task_class["multi_outputs"]["dialog_act"]:
                 evaluation_method[t] = "f1_per_class"
 
@@ -128,11 +143,13 @@ class EvaluationMetrics:
                 for t in subcategory:
                     evaluation_method[t] = "accuracy"
 
-        # Dialog act (classification-level) -> f1_per_class for DND/JI, accuracy for CRA
-        if "classification" in task_class and "dialog_act" in task_class["classification"]:
+        # Dialog act (classification-level) -> f1_per_class (all are multi-label)
+        if (
+            "classification" in task_class
+            and "dialog_act" in task_class["classification"]
+        ):
             for t in task_class["classification"]["dialog_act"]:
-                if "ji" in t or "dnd" in t:
-                    evaluation_method[t] = "f1_per_class"
+                evaluation_method[t] = "f1_per_class"
 
         # Regression tasks -> accuracy
         if "regression" in task_class:
@@ -150,12 +167,18 @@ class EvaluationMetrics:
         evaluation_method.setdefault("sta_ask_point_values_dnd", "elementwise_accuracy")
         evaluation_method.setdefault("sta_ask_point_values_ca", "elementwise_accuracy")
         for t in [
-            "sta_total_item_count_dnd", "sta_max_points_dnd",
-            "sta_total_item_count_ca", "sta_max_points_ca",
-            "sta_ask_high_priority_ca", "sta_ask_low_priority_ca",
-            "sta_ask_high_priority_ji_w", "sta_ask_low_priority_ji_w",
-            "mid_ask_high_priority_ca", "mid_ask_low_priority_ca",
-            "mid_ask_high_priority_ji_w", "mid_ask_low_priority_ji_w",
+            "sta_total_item_count_dnd",
+            "sta_max_points_dnd",
+            "sta_total_item_count_ca",
+            "sta_max_points_ca",
+            "sta_ask_high_priority_ca",
+            "sta_ask_low_priority_ca",
+            "sta_ask_high_priority_ji_w",
+            "sta_ask_low_priority_ji_w",
+            "mid_ask_high_priority_ca",
+            "mid_ask_low_priority_ca",
+            "mid_ask_high_priority_ji_w",
+            "mid_ask_low_priority_ji_w",
         ]:
             evaluation_method.setdefault(t, "accuracy")
 

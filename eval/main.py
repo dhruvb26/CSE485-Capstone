@@ -281,6 +281,9 @@ def _parse_task(filename_stem, known_tasks):
     return None
 
 
+_KNOWN_DATASETS = sorted(TASK_TO_DATASET.values(), key=len, reverse=True)
+
+
 def _parse_dataset_model_from_stem(filename_stem, task):
     """Split stem into (dataset, model); model may contain underscores."""
     base = _strip_optional_eval_suffixes(filename_stem)
@@ -288,6 +291,9 @@ def _parse_dataset_model_from_stem(filename_stem, task):
     if not m:
         return "", ""
     prefix = m.group(1)
+    for ds in _KNOWN_DATASETS:
+        if prefix.startswith(ds + "_"):
+            return ds, prefix[len(ds) + 1 :]
     parts = prefix.split("_", 1)
     dataset = parts[0] if parts else ""
     model = parts[1] if len(parts) > 1 else ""

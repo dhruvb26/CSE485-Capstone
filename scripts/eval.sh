@@ -56,11 +56,12 @@ for m in cfg.get('matchups', []):
         agent = m.get(role, {})
         url = agent.get('base_url', '')
         if 'localhost' in url or '127.0.0.1' in url:
-            print(agent['model'])
+            thinking = agent.get('thinking', True)
+            print(f'{agent[\"model\"]}|{\"1\" if thinking else \"0\"}')
             sys.exit(0)
 for m in cfg.get('models', []):
     if m.get('type') == 'vllm_model':
-        print(m.get('model_str', ''))
+        print(f'{m.get(\"model_str\", \"\")}|1')
         sys.exit(0)
 print('', file=sys.stderr)
 sys.exit(1)
@@ -70,15 +71,26 @@ sys.exit(1)
 start_vllm() {
     local MODEL="$1"
     local PORT="${2:-8000}"
+    local THINKING="${3:-0}"
 
-    echo "Starting vLLM server for $MODEL on port $PORT ..."
-    $PYTHON -m vllm.entrypoints.openai.api_server \
-        --model "$MODEL" \
-        --model-impl transformers \
-        --port "$PORT" \
-        --dtype auto \
-        --max-model-len 8192 \
-        --gpu-memory-utilization 0.90 \
+    VLLM_ARGS=(
+        --model "$MODEL"
+        --model-impl transformers
+        --port "$PORT"
+        --dtype auto
+        --max-model-len 8192
+        --gpu-memory-utilization 0.90
+    )
+
+    if [[ "$THINKING" == "1" ]]; then
+        VLLM_ARGS+=(--reasoning-parser qwen3)
+        echo "Starting vLLM server for $MODEL on port $PORT (thinking enabled) ..."
+    else
+        VLLM_ARGS+=(--default-chat-template-kwargs '{"enable_thinking": false}')
+        echo "Starting vLLM server for $MODEL on port $PORT (thinking disabled) ..."
+    fi
+
+    $PYTHON -m vllm.entrypoints.openai.api_server "${VLLM_ARGS[@]}" \
         &> "logs/jobs/vllm_server_${SLURM_JOB_ID}.log" &
 
     VLLM_PID=$!
@@ -135,10 +147,12 @@ case "$MODE" in
     vllm-tasks)
         CONFIG="${1:-$(dirname "$0")/../eval/configs/tasks.yaml}"
 
-        MODEL=$(detect_local_model "$CONFIG") || {
+        DETECT=$(detect_local_model "$CONFIG") || {
             echo "ERROR: no localhost model found in $CONFIG"; exit 1
         }
-        start_vllm "$MODEL"
+        MODEL="${DETECT%%|*}"
+        THINKING="${DETECT##*|}"
+        start_vllm "$MODEL" 8000 "$THINKING"
 
         $PYTHON -m eval tasks --config "$CONFIG"
         ;;
@@ -146,10 +160,12 @@ case "$MODE" in
     vllm-negotiate)
         CONFIG="${1:-$(dirname "$0")/../eval/configs/negotiate.yaml}"
 
-        MODEL=$(detect_local_model "$CONFIG") || {
+        DETECT=$(detect_local_model "$CONFIG") || {
             echo "ERROR: no localhost model found in $CONFIG"; exit 1
         }
-        start_vllm "$MODEL"
+        MODEL="${DETECT%%|*}"
+        THINKING="${DETECT##*|}"
+        start_vllm "$MODEL" 8000 "$THINKING"
 
         $PYTHON -m eval negotiate --config "$CONFIG"
         ;;
