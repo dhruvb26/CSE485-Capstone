@@ -315,32 +315,78 @@ class APIGenerator:
         api_key: str,
         max_tokens: int = 512,
         thinking: bool = True,
+        reasoning: str | None = None,
     ):
         from openai import OpenAI
 
         self.client = OpenAI(base_url=base_url, api_key=api_key)
+        self.base_url = base_url
         self.model = model
         self.max_tokens = max_tokens
         self.thinking = thinking
+        self.reasoning = reasoning
+        self._use_responses_api = reasoning is not None and OPENAI_BASE_URL in base_url
 
     def __call__(
         self, messages: list[dict], temperature: float = 0.7, top_p: float = 0.9
     ) -> str:
+        if self._use_responses_api:
+            return self._call_responses_api(messages)
+        return self._call_chat_completions(messages, temperature, top_p)
+
+    @staticmethod
+    def _sanitize_msgs(messages: list[dict]) -> list[dict]:
+        ALLOWED = {"role", "content"}
+        return [{k: v for k, v in m.items() if k in ALLOWED} for m in messages]
+
+    def _call_responses_api(self, messages: list[dict]) -> str:
+        """Use the Responses API for OpenAI reasoning models (captures reasoning summary)."""
+        resp = self.client.responses.create(
+            model=self.model,
+            input=self._sanitize_msgs(messages),
+            reasoning={"effort": self.reasoning, "summary": "auto"},
+            max_output_tokens=self.max_tokens,
+        )
+        reasoning_text = ""
+        content = ""
+        for item in resp.output:
+            if item.type == "reasoning" and item.summary:
+                reasoning_text = "\n".join(s.text for s in item.summary)
+            elif item.type == "message":
+                for block in item.content:
+                    if block.type == "output_text":
+                        content = block.text.strip()
+        if reasoning_text:
+            return f"<think>{reasoning_text}</think>\n{content}"
+        return content
+
+    def _call_chat_completions(
+        self, messages: list[dict], temperature: float, top_p: float
+    ) -> str:
+        """Use the Chat Completions API (vLLM, Tinker, etc.)."""
+        token_key = (
+            "max_completion_tokens"
+            if OPENAI_BASE_URL in self.base_url
+            else "max_tokens"
+        )
         kwargs: dict = dict(
             model=self.model,
-            messages=messages,
-            max_tokens=self.max_tokens,
+            messages=self._sanitize_msgs(messages),
             temperature=temperature,
             top_p=top_p,
+            **{token_key: self.max_tokens},
         )
+        extra: dict = {}
         if not self.thinking:
-            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+            extra["chat_template_kwargs"] = {"enable_thinking": False}
+        if extra:
+            kwargs["extra_body"] = extra
         resp = self.client.chat.completions.create(**kwargs)
         msg = resp.choices[0].message
         content = (msg.content or "").strip()
-        reasoning = getattr(msg, "reasoning_content", None) or ""
-        if reasoning:
-            return f"<think>{reasoning}</think>\n{content}"
+        reasoning_content = getattr(msg, "reasoning_content", None) or ""
+        if reasoning_content:
+            return f"<think>{reasoning_content}</think>\n{content}"
         return content
 
 
@@ -393,6 +439,7 @@ def make_generator(
             api_key=api_key,
             max_tokens=agent_cfg.get("max_tokens", 512),
             thinking=thinking,
+            reasoning=agent_cfg.get("reasoning"),
         )
     model, tok = load_model_and_tokenizer(
         agent_cfg["model_path"],

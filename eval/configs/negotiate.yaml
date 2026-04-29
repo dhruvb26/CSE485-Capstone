@@ -38,15 +38,18 @@ storage_dir: ./logs/eval/negotiate
 
 matchups:
   - learner:
-      label: qwen3-4b-instruct-2507-nothink
+      label: qwen3-4b-instruct-2507
       type: api
       base_url: http://localhost:8000/v1
       api_key_env: OPENAI_API_KEY
       model: Qwen/Qwen3-4B-Instruct-2507
+      max_tokens: 300 
       thinking: false
+      # reasoning: medium
     opponent:
       label: qwen3-30b-a3b-instruct-2507
       type: api
       base_url: https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1
       api_key_env: TINKER_API_KEY
       model: Qwen/Qwen3-30B-A3B-Instruct-2507
+      max_tokens: 300
