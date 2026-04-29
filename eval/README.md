@@ -1,171 +1,136 @@
 # Evaluation
 
-This module provides a YAML-driven evaluation framework for systematically assessing LLM capabilities in negotiation dialogues. It is adapted from the [SysEval-NegoLLMs](https://github.com/DSincerity/SysEval-NegoLLMs) codebase accompanying the following paper:
+Two evaluation modes: **tasks** (comprehension/generation benchmarks) and **negotiate** (self-play dialogue).
 
-> Deuksin Kwon, Emily Weiss, Tara Kulshrestha, Kushal Chawla, Gale Lucas, and Jonathan Gratch. 2024. **Are LLMs Effective Negotiators? Systematic Evaluation of the Multifaceted Capabilities of LLMs in Negotiation Dialogues.** In *Findings of the Association for Computational Linguistics: EMNLP 2024*, pages 5391–5413. Association for Computational Linguistics.
-
-```bibtex
-@inproceedings{kwon-etal-2024-llms,
-    title     = "Are {LLM}s Effective Negotiators? Systematic Evaluation of the Multifaceted Capabilities of {LLM}s in Negotiation Dialogues",
-    author    = "Kwon, Deuksin and Weiss, Emily and Kulshrestha, Tara and Chawla, Kushal and Lucas, Gale and Gratch, Jonathan",
-    booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2024",
-    year      = "2024",
-    publisher = "Association for Computational Linguistics",
-    pages     = "5391--5413",
-    url       = "https://arxiv.org/abs/2402.13550"
-}
+```
+eval/
+├── __main__.py          # CLI dispatcher: `python -m eval tasks|negotiate`
+├── main.py              # Tasks evaluation orchestrator
+├── registry.py          # (dataset, model, task) config registry
+├── metrics.py           # Scoring functions (accuracy, F1, BLEU/ROUGE)
+├── display.py           # Rich console output
+├── utils.py             # Shared helpers
+├── configs/
+│   ├── tasks.yaml       # Config for task evaluation
+│   └── negotiate.yaml   # Config for self-play negotiation
+├── models/
+│   ├── base.py          # BaseModelHandler ABC
+│   ├── openai_model.py  # OpenAI API (GPT-4o, etc.)
+│   ├── local_model.py   # Local checkpoints + LoRA merging
+│   └── vllm_model.py    # vLLM OpenAI-compatible API
+├── negotiate/
+│   ├── envs.py          # NegotiateEnv ABC + 5 dataset environments
+│   ├── prompts.py       # System prompts for all negotiation environments
+│   └── harness.py       # Self-play loop, scoring, logging
+├── tasks/               # Per-task handlers (SysEval benchmark)
+└── datasets/            # Dataset loaders (DnD, CaSiNo, JI, CRA)
 ```
 
-## Quick Start
+The tasks side is adapted from [SysEval-NegoLLMs](https://github.com/DSincerity/SysEval-NegoLLMs):
 
-### 1. Configure your evaluation
+> Deuksin Kwon, Emily Weiss, Tara Kulshrestha, Kushal Chawla, Gale Lucas, and Jonathan Gratch. 2024. **Are LLMs Effective Negotiators? Systematic Evaluation of the Multifaceted Capabilities of LLMs in Negotiation Dialogues.** In *Findings of the Association for Computational Linguistics: EMNLP 2024*, pages 5391–5413.
 
-Edit `eval/config.yaml`:
+## Task Evaluation
+
+Runs comprehension and generation tasks across 4 datasets and 3 dialogue stages (start, mid, end).
+
+```bash
+python -m eval tasks --config eval/configs/tasks.yaml
+python -m eval tasks --evaluate-only     # score existing logs only
+python -m eval tasks --list-tasks        # show all available tasks
+```
+
+### Config
 
 ```yaml
 models:
-  - type: open_ai
-    model_str: gpt-4o-mini-2024-07-18
+  - type: local_model
+    model_path: checkpoints/grpo-tuned
+    base_model: Qwen/Qwen2.5-7B-Instruct
+    label: my-grpo-model
+    max_new_tokens: 2048
 
 tasks:
-  - sta_total_item_count_dnd
-  - end_deal_specifics_ca
+  - all_dnd           # all DnD tasks
+  # or list individual tasks:
+  # - sta_total_item_count_dnd
+  # - end_deal_specifics_ca
 
 num_instances: 200
+use_cot: true
 storage_dir: ./logs/eval
 ```
 
-### 2. Run evaluation
+### Supported Models
 
-```bash
-# Run with default config
-python -m eval
+| Type | Config Key | Notes |
+|------|-----------|-------|
+| **OpenAI** | `open_ai` | GPT-4o, GPT-4o-mini, etc. Needs `OPENAI_API_KEY` |
+| **Local** | `local_model` | Any AutoModelForCausalLM checkpoint, auto-detects LoRA |
+| **vLLM** | `vllm_model` | OpenAI-compatible API from `vllm serve` |
 
-# Run with custom config
-python -m eval --config path/to/my_config.yaml
-
-# Only score existing logs (no model inference)
-python -m eval --evaluate-only
-
-# List all available tasks
-python -m eval --list-tasks
-```
-
-### 3. Environment variables
-
-For OpenAI models, set:
-```bash
-export OPENAI_API_KEY=your-key-here
-```
-
-## Available Tasks
-
-Tasks span **4 negotiation datasets** and **3 dialogue stages** (start, mid, end):
-
-| Dataset | Code | Description |
-|---------|------|-------------|
-| **Deal or No Deal** | `dnd` | Book/hat/ball item negotiation |
-| **CaSiNo** | `casino` / `ca` | Campsite food/water/firewood negotiation |
-| **Job Interview** | `job_interview` / `ji` | 5-issue job offer negotiation |
-| **CRA** | `cra` | Painting/lamp/record negotiation |
-
-### Task Categories
-
-| Stage | Task Type | Example Tasks | Metric |
-|-------|-----------|---------------|--------|
-| **Start** | Comprehension | `sta_total_item_count_dnd`, `sta_max_points_ca` | Accuracy |
-| **Start** | Point values | `sta_ask_point_values_dnd`, `sta_ask_point_values_ca` | Elementwise Accuracy |
-| **Start** | Priorities | `sta_ask_high_priority_ca`, `sta_ask_low_priority_ji_w` | Accuracy |
-| **Mid** | Dialog acts | `mid_dial_act_dnd`, `mid_dial_act_cra` | Macro-F1 |
-| **Mid** | Strategy | `mid_strategy_ca` | Macro-F1 |
-| **Mid** | Generation | `mid_gen_resp_dnd`, `mid_gen_resp_ca` | BLEU/ROUGE |
-| **Mid** | Proposals | `mid_full_proposal_dnd`, `mid_full_proposal_cra` | Elementwise Accuracy |
-| **Mid** | Partner modeling | `mid_partner_ask_high_priority_ca` | Accuracy |
-| **End** | Deal specifics | `end_deal_specifics_dnd`, `end_deal_specifics_ca` | Elementwise Accuracy |
-| **End** | Deal totals | `end_deal_total_dnd`, `end_deal_total_ca` | Accuracy |
-| **End** | Subjective | `end_deal_likeness_ca`, `end_deal_satisfaction_ca` | Accuracy |
-
-### Shortcuts
-
-In the YAML config, use these shortcuts:
+### Task Shortcuts
 
 ```yaml
 tasks:
-  - all              # every task across all datasets
-  - all_dnd          # all Deal-or-No-Deal tasks
-  - all_casino       # all CaSiNo tasks
+  - all               # every task across all datasets
+  - all_dnd           # all Deal-or-No-Deal tasks
+  - all_casino        # all CaSiNo tasks
   - all_job_interview # all Job Interview tasks
-  - all_cra          # all CRA tasks
+  - all_cra           # all CRA tasks
 ```
 
-## Supported Models
+## Self-Play Negotiation
 
-| Type | Config Key | Examples |
-|------|-----------|----------|
-| **OpenAI** | `open_ai` | `gpt-4o-mini-2024-07-18`, `gpt-4o-2024-08-06`, `gpt-3.5-turbo` |
-| **HuggingFace** | `hf_model` | `mistralai/Mistral-7B-Instruct-v0.1`, `google/flan-t5-base` |
-| **Local / Custom** | `local_model` | Any `AutoModelForCausalLM`-compatible checkpoint, including LoRA adapters |
+Runs LLM-vs-LLM negotiation dialogues, scores deals, and computes metrics.
 
-### Using custom-trained models
-
-The `local_model` type loads any checkpoint produced by your training pipeline (SFT, GRPO, etc.):
-
-```yaml
-models:
-  - type: local_model
-    model_path: checkpoints/grpo-tuned       # checkpoint dir or HF hub name
-    base_model: Qwen/Qwen2.5-3B-Instruct    # required if model_path is a LoRA adapter
-    label: my-grpo-model                     # optional display name for log files
-    max_new_tokens: 256                      # generation length (default: 256)
-    token_limit: 4096                        # max input tokens (default: 4096)
+```bash
+python -m eval negotiate --config eval/configs/negotiate.yaml
+python -m eval negotiate --evaluate-only logs/negotiate  # rescore existing logs
 ```
 
-- **Full checkpoint**: if `model_path` contains a full model, only `model_path` is needed.
-- **LoRA adapter**: if `adapter_config.json` is found in `model_path`, the handler loads `base_model` first, merges the adapter, then runs inference.
-- Prompts are formatted using the tokenizer's `apply_chat_template` when available.
-
-## Configuration Reference
+### Config
 
 ```yaml
-models:
-  - type: open_ai                           # "open_ai", "hf_model", or "local_model"
-    model_str: gpt-4o-mini-2024-07-18       # model identifier
+dataset: casino              # casino | dnd | amazon | craigslist | ji
+csv_path: data/casino/ca.test.csv
+num_episodes: 100
+max_turns: 12
+output_dir: logs/negotiate
 
-  - type: local_model
-    model_path: checkpoints/grpo-tuned      # path to checkpoint or HF hub name
-    base_model: Qwen/Qwen2.5-3B-Instruct   # base model for LoRA adapters
-    label: my-grpo-model                    # display name (defaults to dir basename)
+matchups:
+  - learner:
+      type: api
+      base_url: http://localhost:8000/v1
+      model: Qwen/Qwen3-4B-Instruct-2507
+    opponent:
+      type: api
+      base_url: https://tinker.thinkingmachines.dev/...
+      model: Qwen/Qwen3-30B-A3B-Instruct-2507
+```
 
-tasks:
-  - sta_total_item_count_dnd
+### Supported Datasets
 
-num_instances: 200          # test instances per task (max 200)
-max_num_instances: 200      # hard ceiling
+| Dataset | Type | Agent IDs |
+|---------|------|-----------|
+| **CaSiNo** | Multi-item integrative (food/water/firewood) | Participant IDs from CSV |
+| **DnD** | Multi-item integrative (book/hat/ball) | `agent_0`, `agent_1` |
+| **AmazonHistoryPrice** | Single-issue price (buyer/seller) | `buyer`, `seller` |
+| **Craigslist Bargains** | Single-issue price (buyer/seller) | `buyer`, `seller` |
+| **Job Interview** | Multi-attribute hybrid (5 issues) | `worker`, `recruiter` |
 
-use_cot: false              # chain-of-thought
-num_multishot: 0            # few-shot examples (0 or 2)
-num_prior_utts: 0           # prior context utterances
-num_utts_partial_dial: -1   # partial dialogue (-1 = full)
+## Environment Variables
 
-storage_dir: ./logs/eval    # output directory (gitignored via logs/)
-evaluate_only: false        # if true, just score existing logs
+```bash
+export OPENAI_API_KEY=...    # OpenAI models
+export TINKER_API_KEY=...    # Tinker API (ASU)
 ```
 
 ## Output
 
-Evaluation logs are saved as JSON files under `logs/eval/`:
+Logs are saved as JSON under the configured `storage_dir` / `output_dir`:
 
 ```
-logs/eval/
-  dnd_gpt-4o-mini-2024-07-18_sta_total_item_count_dnd_200.json
-  casino_gpt-4o-mini-2024-07-18_end_deal_specifics_ca_200.json
-  dnd_my-grpo-model_sta_total_item_count_dnd_200.json
-  ...
+logs/eval/     # task evaluation results
+logs/negotiate/ # self-play dialogue transcripts + scores
 ```
-
-Each log contains:
-- `ground truth`: expected answers
-- `predictions`: model predictions
-- `prompts`: prompts sent to the model
-- `outputs_dict`: raw model outputs
-- `stats`: instance counts (total, unique, valid)

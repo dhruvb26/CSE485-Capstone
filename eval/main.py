@@ -59,7 +59,6 @@ def build_args(config, model_cfg):
         num_utts_partial_dial=config.get("num_utts_partial_dial", -1),
         storage_dir=config.get("storage_dir", "./logs/eval"),
         openai_model_str=model_cfg.get("model_str", "gpt-4o-mini-2024-07-18"),
-        hf_model_str=model_cfg.get("model_str", ""),
         # local_model fields
         model_path=model_cfg.get("model_path", ""),
         base_model=model_cfg.get("base_model", ""),
@@ -320,17 +319,9 @@ def _ensure_format(preds, gt, metric):
 
 def list_available_tasks():
     """Print all available tasks grouped by dataset."""
-    print("\nAvailable evaluation tasks:")
-    print("=" * 60)
+    from eval.display import print_available_tasks
 
-    datasets = {}
-    for ds, model, task in SUPPORTED_CONFIGS:
-        datasets.setdefault(ds, set()).add(task)
-
-    for ds in sorted(datasets.keys()):
-        print(f"\n  {ds}:")
-        for task in sorted(datasets[ds]):
-            print(f"    - {task}")
+    print_available_tasks(SUPPORTED_CONFIGS)
 
 
 def main():

@@ -11,6 +11,15 @@ import json
 from eval import utils
 
 
+def _model_display_name(model_handler) -> str:
+    """Resolve a human-readable name from any model handler type."""
+    if hasattr(model_handler, "display_name"):
+        return model_handler.display_name
+    if model_handler.name == "open_ai":
+        return model_handler.args.openai_model_str
+    return model_handler.name
+
+
 def _extract_last_tag(text, tag):
     """Return the content of the last <tag>...</tag> block, or None."""
     end = text.rfind(f"</{tag}>")
@@ -19,7 +28,7 @@ def _extract_last_tag(text, tag):
     start = text.rfind(f"<{tag}>", 0, end)
     if start == -1:
         return None
-    return text[start + len(f"<{tag}>"):end].strip()
+    return text[start + len(f"<{tag}>") : end].strip()
 
 
 def _extract_last_answer(text):
@@ -40,7 +49,7 @@ def _extract_last_json_answer(raw):
             start = raw.rfind(f"<{tag}>", 0, end)
             if start == -1:
                 break
-            inner = raw[start + len(f"<{tag}>"):end].strip()
+            inner = raw[start + len(f"<{tag}>") : end].strip()
             if inner.startswith("{") and inner.endswith("}"):
                 return inner
             search_end = start
@@ -73,35 +82,43 @@ class KBaseTaskHandler:
     @staticmethod
     def _format_submit_deal(log, eval_agent):
         """Convert a CaSiNo Submit-Deal log entry to the structured training format."""
-        td = log['task_data']
-        if log['id'] == eval_agent:
-            f, w, fw = td['issue2youget']['Food'], td['issue2youget']['Water'], td['issue2youget']['Firewood']
+        td = log["task_data"]
+        if log["id"] == eval_agent:
+            f, w, fw = (
+                td["issue2youget"]["Food"],
+                td["issue2youget"]["Water"],
+                td["issue2youget"]["Firewood"],
+            )
         else:
-            f, w, fw = td['issue2theyget']['Food'], td['issue2theyget']['Water'], td['issue2theyget']['Firewood']
+            f, w, fw = (
+                td["issue2theyget"]["Food"],
+                td["issue2theyget"]["Water"],
+                td["issue2theyget"]["Firewood"],
+            )
         return f"[SUBMIT_DEAL] food:{f} water:{w} firewood:{fw}"
 
     def get_prompt_ca(self, instance, template, agent):
         dialogue = ""
-        logs = instance['chat_logs']
-        participant_info = instance['participant_info']
+        logs = instance["chat_logs"]
+        participant_info = instance["participant_info"]
 
         history = logs[:]
         history2 = []
         for utt in history:
-            if utt['text'] == "Submit-Deal":
+            if utt["text"] == "Submit-Deal":
                 utt = dict(utt, text=self._format_submit_deal(utt, agent))
                 history2.append(utt)
-            elif utt['text'] in self._ACTION_MAP:
-                utt = dict(utt, text=self._ACTION_MAP[utt['text']])
+            elif utt["text"] in self._ACTION_MAP:
+                utt = dict(utt, text=self._ACTION_MAP[utt["text"]])
                 history2.append(utt)
             else:
                 history2.append(utt)
 
         if self.args.num_utts_partial_dial != -1:
-            history2 = history2[:self.args.num_utts_partial_dial]
+            history2 = history2[: self.args.num_utts_partial_dial]
 
         for utt in history2:
-            dialogue += utt['id'] + ": " + utt['text'] + "\n"
+            dialogue += utt["id"] + ": " + utt["text"] + "\n"
 
         dialogue = dialogue.replace("mturk_agent_1:", "YOU:")
         dialogue = dialogue.replace("mturk_agent_2:", "THEM:")
@@ -113,9 +130,9 @@ class KBaseTaskHandler:
 
         def priority2points(d):
             for k, v in d.items():
-                if v == 'Low':
+                if v == "Low":
                     d[k] = 3
-                elif v == 'Medium':
+                elif v == "Medium":
                     d[k] = 4
                 else:
                     d[k] = 5
@@ -126,25 +143,25 @@ class KBaseTaskHandler:
 
         prompt = template.replace("$dialogue$", dialogue)
         if agent == "mturk_agent_1":
-            prompt = prompt.replace("$food_points$", str(agent1_points['Food']))
-            prompt = prompt.replace("$water_points$", str(agent1_points['Water']))
-            prompt = prompt.replace("$fire_points$", str(agent1_points['Firewood']))
+            prompt = prompt.replace("$food_points$", str(agent1_points["Food"]))
+            prompt = prompt.replace("$water_points$", str(agent1_points["Water"]))
+            prompt = prompt.replace("$fire_points$", str(agent1_points["Firewood"]))
         elif agent == "mturk_agent_2":
-            prompt = prompt.replace("$food_points$", str(agent2_points['Food']))
-            prompt = prompt.replace("$water_points$", str(agent2_points['Water']))
-            prompt = prompt.replace("$fire_points$", str(agent2_points['Firewood']))
+            prompt = prompt.replace("$food_points$", str(agent2_points["Food"]))
+            prompt = prompt.replace("$water_points$", str(agent2_points["Water"]))
+            prompt = prompt.replace("$fire_points$", str(agent2_points["Firewood"]))
 
         return prompt
 
     def get_prompt_dnd(self, instance, template, agent):
         dialogue = ""
-        dialogue_list = str(instance['dialogue']).split(" <eos> ")
+        dialogue_list = str(instance["dialogue"]).split(" <eos> ")
         for turn in dialogue_list[:-1]:
             dialogue += turn + "\n"
 
-        you_value = instance['input']["value"]
-        them_value = instance['partner_input']["value"]
-        counts = instance['input']['count']
+        you_value = instance["input"]["value"]
+        them_value = instance["partner_input"]["value"]
+        counts = instance["input"]["count"]
 
         prompt = template.replace("$dialogue$", dialogue)
         prompt = prompt.replace("$num_books$", str(counts[0]))
@@ -173,9 +190,13 @@ class KBaseTaskHandler:
             prompt = template.replace("$dialogue$", dialogue)
         elif "$utterance$" in template:
             if instance["agent"] == 0:
-                prompt = template.replace("$utterance$", "YOU: " + instance["data"].strip())
+                prompt = template.replace(
+                    "$utterance$", "YOU: " + instance["data"].strip()
+                )
             elif instance["agent"] == 1:
-                prompt = template.replace("$utterance$", "THEM: " + instance["data"].strip())
+                prompt = template.replace(
+                    "$utterance$", "THEM: " + instance["data"].strip()
+                )
         return prompt
 
     def get_reg_slot_prompt_dnd(self, instance, template):
@@ -183,7 +204,11 @@ class KBaseTaskHandler:
         book_count = instance["Counts"]["book"]
         hat_count = instance["Counts"]["hat"]
         ball_count = instance["Counts"]["ball"]
-        prompt = base_prompt.replace("$num_books$", str(book_count)).replace("$num_hats$", str(hat_count)).replace("$num_balls$", str(ball_count))
+        prompt = (
+            base_prompt.replace("$num_books$", str(book_count))
+            .replace("$num_hats$", str(hat_count))
+            .replace("$num_balls$", str(ball_count))
+        )
 
         if "book_points" in prompt:
             if instance["agent"] == 0:
@@ -194,7 +219,11 @@ class KBaseTaskHandler:
                 book_value = instance["Them_values"]["book"]
                 hat_value = instance["Them_values"]["hat"]
                 ball_value = instance["Them_values"]["ball"]
-            prompt = prompt.replace("$book_points$", str(book_value)).replace("$hat_points$", str(hat_value)).replace("$ball_points$", str(ball_value))
+            prompt = (
+                prompt.replace("$book_points$", str(book_value))
+                .replace("$hat_points$", str(hat_value))
+                .replace("$ball_points$", str(ball_value))
+            )
 
         return prompt
 
@@ -202,9 +231,13 @@ class KBaseTaskHandler:
         prompt = self.get_reg_slot_prompt_dnd(instance, template)
         if prev_instance:
             if prev_instance["agent"] == 0:
-                prompt = prompt.replace("$previous_utterance$", "YOU: " + prev_instance["data"])
+                prompt = prompt.replace(
+                    "$previous_utterance$", "YOU: " + prev_instance["data"]
+                )
             elif prev_instance["agent"] == 1:
-                prompt = prompt.replace("$previous_utterance$", "THEM: " + prev_instance["data"])
+                prompt = prompt.replace(
+                    "$previous_utterance$", "THEM: " + prev_instance["data"]
+                )
         else:
             prompt = prompt.replace("$previous_utterance$", "None")
         return prompt
@@ -215,7 +248,9 @@ class KBaseTaskHandler:
     def get_con_ul_prompt_cra(self, utterance, context, template):
         prompt = template.replace("$utterance$", utterance)
         if isinstance(context, str):
-            cxt = context.replace("\"", "").replace("\\n", " ").replace("\n", " ").split()
+            cxt = (
+                context.replace('"', "").replace("\\n", " ").replace("\n", " ").split()
+            )
             cxt = [w for w in cxt if w != ""]
             cxt2 = []
             what = None
@@ -247,14 +282,24 @@ class KBaseTaskHandler:
     def make_con_ul_prompt_cra(self, instance, template):
         if not isinstance(instance["context_str"], str):
             if instance["spkr"] == "A":
-                prompt = self.get_con_ul_prompt_cra("Alice: " + instance["utt"] + "\n", None, template)
+                prompt = self.get_con_ul_prompt_cra(
+                    "Alice: " + instance["utt"] + "\n", None, template
+                )
             elif instance["spkr"] == "B":
-                prompt = self.get_con_ul_prompt_cra("Bob: " + instance["utt"] + "\n", None, template)
+                prompt = self.get_con_ul_prompt_cra(
+                    "Bob: " + instance["utt"] + "\n", None, template
+                )
         else:
             if instance["spkr"] == "A":
-                prompt = self.get_con_ul_prompt_cra("Alice: " + instance["utt"] + "\n", instance["context_str"], template)
+                prompt = self.get_con_ul_prompt_cra(
+                    "Alice: " + instance["utt"] + "\n",
+                    instance["context_str"],
+                    template,
+                )
             elif instance["spkr"] == "B":
-                prompt = self.get_con_ul_prompt_cra("Bob: " + instance["utt"] + "\n", instance["context_str"], template)
+                prompt = self.get_con_ul_prompt_cra(
+                    "Bob: " + instance["utt"] + "\n", instance["context_str"], template
+                )
         return prompt
 
     def get_prompt_ji(self, instance, template):
@@ -271,7 +316,9 @@ class KBaseTaskHandler:
 
         bids_dict = {}
         for bid in instance.bids:
-            bid_str = bid.user.context["role"] + ": < propose > " + str(bid.options) + "\n"
+            bid_str = (
+                bid.user.context["role"] + ": < propose > " + str(bid.options) + "\n"
+            )
             if bid.accepted:
                 if bid.user.context["role"] == "worker":
                     bid_response_str = "recruiter: < accept bid >\n"
@@ -301,14 +348,19 @@ class KBaseTaskHandler:
         dialogue_lines = full_dialogue.split("\n")
         dialogue_lines = [line.strip() for line in dialogue_lines if line.strip() != ""]
 
-        if "< accept bid >" in dialogue_lines[-1] or "< reject bid >" in dialogue_lines[-1]:
+        if (
+            "< accept bid >" in dialogue_lines[-1]
+            or "< reject bid >" in dialogue_lines[-1]
+        ):
             assert "< propose >" in dialogue_lines[-2]
             dialogue_lines_final = dialogue_lines[:-2]
         else:
             dialogue_lines_final = dialogue_lines[:]
 
         if self.args.num_utts_partial_dial != -1:
-            dialogue_lines_final = dialogue_lines_final[:self.args.num_utts_partial_dial]
+            dialogue_lines_final = dialogue_lines_final[
+                : self.args.num_utts_partial_dial
+            ]
 
         dialogue = ""
         for line in dialogue_lines_final:
@@ -321,9 +373,13 @@ class KBaseTaskHandler:
 
         agent = "worker"
         if instance.users[0].context["role"] == agent:
-            weights_list = {d["name"]: d["weight"] for d in instance.users[0].context["utilities"]}
+            weights_list = {
+                d["name"]: d["weight"] for d in instance.users[0].context["utilities"]
+            }
         elif instance.users[1].context["role"] == agent:
-            weights_list = {d["name"]: d["weight"] for d in instance.users[1].context["utilities"]}
+            weights_list = {
+                d["name"]: d["weight"] for d in instance.users[1].context["utilities"]
+            }
 
         wdict = copy.deepcopy(weights_list)
         wdict["position"] = wdict.pop("Position")
@@ -332,11 +388,21 @@ class KBaseTaskHandler:
         wdict["days_off"] = wdict.pop("Weekly holiday")
         wdict["workplace"] = wdict.pop("Workplace")
 
-        temp_filled = temp_filled.replace("$pos_weight$", str(round(wdict["position"], 3)))
-        temp_filled = temp_filled.replace("$comp_weight$", str(round(wdict["company"], 3)))
-        temp_filled = temp_filled.replace("$salary_weight$", str(round(wdict["salary"], 3)))
-        temp_filled = temp_filled.replace("$workplace_weight$", str(round(wdict["workplace"], 3)))
-        temp_filled = temp_filled.replace("$days_off_weight$", str(round(wdict["days_off"], 3)))
+        temp_filled = temp_filled.replace(
+            "$pos_weight$", str(round(wdict["position"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$comp_weight$", str(round(wdict["company"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$salary_weight$", str(round(wdict["salary"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$workplace_weight$", str(round(wdict["workplace"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$days_off_weight$", str(round(wdict["days_off"], 3))
+        )
         return temp_filled
 
     def get_turns_from_dialogue_ji(self, instance):
@@ -350,7 +416,11 @@ class KBaseTaskHandler:
 
         turn = []
         for index in range(len(dialogue_lines)):
-            if "< propose >" in dialogue_lines[index] or "< accept bid >" in dialogue_lines[index] or "< reject bid >" in dialogue_lines[index]:
+            if (
+                "< propose >" in dialogue_lines[index]
+                or "< accept bid >" in dialogue_lines[index]
+                or "< reject bid >" in dialogue_lines[index]
+            ):
                 if turn:
                     turns_list.append(turn)
                     turn = []
@@ -386,13 +456,19 @@ class KBaseTaskHandler:
         for instance in instances:
             turns = self.get_turns_from_dialogue_ji(instance)
             for turn in turns:
-                organized_turns.append({"num_dialogue": num_dialogue, "turn_comments": turn, "orig_instance": copy.deepcopy(instance)})
+                organized_turns.append(
+                    {
+                        "num_dialogue": num_dialogue,
+                        "turn_comments": turn,
+                        "orig_instance": copy.deepcopy(instance),
+                    }
+                )
             num_dialogue += 1
         return organized_turns
 
     def get_turns(self, dataset_handler):
         organized_turns = self.get_all_turns(dataset_handler)
-        return organized_turns[:self.args.num_instances]
+        return organized_turns[: self.args.num_instances]
 
     def get_reg_da_prompt_ji(self, turn, template):
         turn_string = ""
@@ -403,16 +479,22 @@ class KBaseTaskHandler:
             speaker = "recruiter: "
 
         for phrase in list_of_phrases:
-            turn_string += phrase.replace("worker: ", "").replace("recruiter: ", "") + "\n"
+            turn_string += (
+                phrase.replace("worker: ", "").replace("recruiter: ", "") + "\n"
+            )
         turn_string = speaker + turn_string
         temp_filled = template.replace("$utterance$", turn_string)
 
         agent = "worker"
         instance = turn["orig_instance"]
         if instance.users[0].context["role"] == agent:
-            weights_list = {d["name"]: d["weight"] for d in instance.users[0].context["utilities"]}
+            weights_list = {
+                d["name"]: d["weight"] for d in instance.users[0].context["utilities"]
+            }
         elif instance.users[1].context["role"] == agent:
-            weights_list = {d["name"]: d["weight"] for d in instance.users[1].context["utilities"]}
+            weights_list = {
+                d["name"]: d["weight"] for d in instance.users[1].context["utilities"]
+            }
 
         wdict = copy.deepcopy(weights_list)
         wdict["position"] = wdict.pop("Position")
@@ -421,11 +503,21 @@ class KBaseTaskHandler:
         wdict["days_off"] = wdict.pop("Weekly holiday")
         wdict["workplace"] = wdict.pop("Workplace")
 
-        temp_filled = temp_filled.replace("$pos_weight$", str(round(wdict["position"], 3)))
-        temp_filled = temp_filled.replace("$comp_weight$", str(round(wdict["company"], 3)))
-        temp_filled = temp_filled.replace("$salary_weight$", str(round(wdict["salary"], 3)))
-        temp_filled = temp_filled.replace("$workplace_weight$", str(round(wdict["workplace"], 3)))
-        temp_filled = temp_filled.replace("$days_off_weight$", str(round(wdict["days_off"], 3)))
+        temp_filled = temp_filled.replace(
+            "$pos_weight$", str(round(wdict["position"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$comp_weight$", str(round(wdict["company"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$salary_weight$", str(round(wdict["salary"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$workplace_weight$", str(round(wdict["workplace"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$days_off_weight$", str(round(wdict["days_off"], 3))
+        )
         return temp_filled
 
     def get_con_da_prompt_ji(self, turn, prev_turn, template):
@@ -438,7 +530,9 @@ class KBaseTaskHandler:
             elif "recruiter: " in prev_list_of_phrases[0]:
                 prev_speaker = "recruiter: "
             for phrase in prev_list_of_phrases:
-                prev_turn_string += phrase.replace("worker: ", "").replace("recruiter: ", "") + "\n"
+                prev_turn_string += (
+                    phrase.replace("worker: ", "").replace("recruiter: ", "") + "\n"
+                )
             prev_turn_string = prev_speaker + prev_turn_string
             prompt = base_prompt.replace("$previous_utterance$", prev_turn_string)
         else:
@@ -458,7 +552,12 @@ class KBaseTaskHandler:
                     if index == 0:
                         dialogue += turn_comments[index] + "  "
                     else:
-                        dialogue += turn_comments[index].replace("worker: ", "").replace("recruiter: ", "") + "  "
+                        dialogue += (
+                            turn_comments[index]
+                            .replace("worker: ", "")
+                            .replace("recruiter: ", "")
+                            + "  "
+                        )
                 dialogue += "\n"
             else:
                 dialogues.append(dialogue)
@@ -469,7 +568,12 @@ class KBaseTaskHandler:
                     if index == 0:
                         dialogue += turn_comments[index] + "  "
                     else:
-                        dialogue += turn_comments[index].replace("worker: ", "").replace("recruiter: ", "") + "  "
+                        dialogue += (
+                            turn_comments[index]
+                            .replace("worker: ", "")
+                            .replace("recruiter: ", "")
+                            + "  "
+                        )
                 dialogue += "\n"
         dialogues.append(dialogue)
         return dialogues
@@ -478,7 +582,9 @@ class KBaseTaskHandler:
         dialogue = dialogue.replace("'", "")
         return template.replace("$dialogue$", dialogue)
 
-    def get_final_outputs(self, outputs_dict, possible_outputs, prompts, ground_truth, cot_bool=False):
+    def get_final_outputs(
+        self, outputs_dict, possible_outputs, prompts, ground_truth, cot_bool=False
+    ):
         final_prompts, final_predictions, final_ground_truth = [], [], []
 
         for prompt, gt in zip(prompts, ground_truth):
@@ -499,7 +605,12 @@ class KBaseTaskHandler:
 
             if answer.strip() in possible_outputs:
                 final_predictions.append(answer.strip())
-            elif any([po in answer.replace("YOU", "a").replace("THEM", "a") for po in possible_outputs]):
+            elif any(
+                [
+                    po in answer.replace("YOU", "a").replace("THEM", "a")
+                    for po in possible_outputs
+                ]
+            ):
                 list_of_words = []
                 for word in answer.replace("YOU", "a").replace("THEM", "a").split(" "):
                     flags_for_word = [po for po in possible_outputs if po in word]
@@ -529,11 +640,15 @@ class KBaseTaskHandler:
             if this_utterance_pred:
                 final_predictions.append(this_utterance_pred)
             else:
-                final_predictions.append('Manual prediction extraction required. If no labels are found, please replace this with the Python list ["none"]. Ensure the none is in double quotes.')
+                final_predictions.append(
+                    'Manual prediction extraction required. If no labels are found, please replace this with the Python list ["none"]. Ensure the none is in double quotes.'
+                )
 
         return final_prompts, final_predictions, final_ground_truth
 
-    def get_final_outputs_dict(self, outputs_dict, possible_keys, possible_outputs, prompts, ground_truth):
+    def get_final_outputs_dict(
+        self, outputs_dict, possible_keys, possible_outputs, prompts, ground_truth
+    ):
         final_prompts, final_predictions, final_ground_truth = [], [], []
 
         for prompt, gt in zip(prompts, ground_truth):
@@ -557,10 +672,19 @@ class KBaseTaskHandler:
                     v = str(v)
                     if v in possible_outputs:
                         pred[k] = v
-                    elif any([po in v.replace("YOU", "a").replace("THEM", "a") for po in possible_outputs]):
+                    elif any(
+                        [
+                            po in v.replace("YOU", "a").replace("THEM", "a")
+                            for po in possible_outputs
+                        ]
+                    ):
                         list_of_words = []
-                        for word in v.replace("YOU", "a").replace("THEM", "a").split(" "):
-                            flags_for_word = [po for po in possible_outputs if po in word]
+                        for word in (
+                            v.replace("YOU", "a").replace("THEM", "a").split(" ")
+                        ):
+                            flags_for_word = [
+                                po for po in possible_outputs if po in word
+                            ]
                             if flags_for_word:
                                 list_of_words.append(flags_for_word[-1])
                         pred[k] = list_of_words[-1]
@@ -572,7 +696,16 @@ class KBaseTaskHandler:
 
         return final_prompts, final_predictions, final_ground_truth
 
-    def log_everything(self, stats, prompts, predictions, ground_truth, outputs_dict, dataset_handler, model_handler):
+    def log_everything(
+        self,
+        stats,
+        prompts,
+        predictions,
+        ground_truth,
+        outputs_dict,
+        dataset_handler,
+        model_handler,
+    ):
         if model_handler.multishot:
             storage = {
                 "ground truth": ground_truth[2:],
@@ -589,17 +722,15 @@ class KBaseTaskHandler:
                 "outputs_dict": outputs_dict,
             }
 
-        mname = model_handler.name
-        if model_handler.name == "hf_model":
-            mname = model_handler.args.hf_model_str.replace("/", "_")
-        elif model_handler.name == "open_ai":
-            mname = model_handler.args.openai_model_str
-        elif model_handler.name == "local_model":
-            mname = model_handler.display_name
+        mname = _model_display_name(model_handler)
 
         out_path = utils.get_output_path(
-            self.args.storage_dir, dataset_handler.name, mname,
-            self.name, self.args.num_instances, args=self.args
+            self.args.storage_dir,
+            dataset_handler.name,
+            mname,
+            self.name,
+            self.args.num_instances,
+            args=self.args,
         )
         utils.write_json(storage, out_path)
 
@@ -641,24 +772,32 @@ class WBaseTaskHandler:
         self-play convention where ``[SUBMIT_DEAL]`` values shown to a player
         are always that player's own allocation.
         """
-        td = log['task_data']
-        if log['id'] == eval_agent:
-            f, w, fw = td['issue2youget']['Food'], td['issue2youget']['Water'], td['issue2youget']['Firewood']
+        td = log["task_data"]
+        if log["id"] == eval_agent:
+            f, w, fw = (
+                td["issue2youget"]["Food"],
+                td["issue2youget"]["Water"],
+                td["issue2youget"]["Firewood"],
+            )
         else:
-            f, w, fw = td['issue2theyget']['Food'], td['issue2theyget']['Water'], td['issue2theyget']['Firewood']
+            f, w, fw = (
+                td["issue2theyget"]["Food"],
+                td["issue2theyget"]["Water"],
+                td["issue2theyget"]["Firewood"],
+            )
         return f"[SUBMIT_DEAL] food:{f} water:{w} firewood:{fw}"
 
     def _build_ca_dialogue(self, logs, eval_agent, limit=None):
         """Build a dialogue string from CaSiNo chat logs with structured deal actions."""
         entries = []
         for log in logs:
-            if log['text'] == "Submit-Deal":
+            if log["text"] == "Submit-Deal":
                 action = self._format_submit_deal(log, eval_agent)
-                entries.append(log['id'] + ": " + action + "\n")
-            elif log['text'] in self._ACTION_MAP:
-                entries.append(log['id'] + ": " + self._ACTION_MAP[log['text']] + "\n")
+                entries.append(log["id"] + ": " + action + "\n")
+            elif log["text"] in self._ACTION_MAP:
+                entries.append(log["id"] + ": " + self._ACTION_MAP[log["text"]] + "\n")
             else:
-                entries.append(log['id'] + ": " + log['text'] + "\n")
+                entries.append(log["id"] + ": " + log["text"] + "\n")
 
         if limit is not None:
             entries = entries[:limit]
@@ -669,8 +808,8 @@ class WBaseTaskHandler:
         return dialogue
 
     def get_prompt_ca(self, instance, template, agent):
-        logs = instance['chat_logs']
-        participant_info = instance['participant_info']
+        logs = instance["chat_logs"]
+        participant_info = instance["participant_info"]
 
         dialogue = self._build_ca_dialogue(logs, agent)
 
@@ -681,9 +820,9 @@ class WBaseTaskHandler:
 
         def priority2points(d):
             for k, v in d.items():
-                if v == 'Low':
+                if v == "Low":
                     d[k] = 3
-                elif v == 'Medium':
+                elif v == "Medium":
                     d[k] = 4
                 else:
                     d[k] = 5
@@ -694,25 +833,25 @@ class WBaseTaskHandler:
 
         prompt = template.replace("$dialogue$", dialogue)
         if agent == "mturk_agent_1":
-            prompt = prompt.replace("$food_points$", str(agent1_points['Food']))
-            prompt = prompt.replace("$water_points$", str(agent1_points['Water']))
-            prompt = prompt.replace("$fire_points$", str(agent1_points['Firewood']))
+            prompt = prompt.replace("$food_points$", str(agent1_points["Food"]))
+            prompt = prompt.replace("$water_points$", str(agent1_points["Water"]))
+            prompt = prompt.replace("$fire_points$", str(agent1_points["Firewood"]))
         elif agent == "mturk_agent_2":
-            prompt = prompt.replace("$food_points$", str(agent2_points['Food']))
-            prompt = prompt.replace("$water_points$", str(agent2_points['Water']))
-            prompt = prompt.replace("$fire_points$", str(agent2_points['Firewood']))
+            prompt = prompt.replace("$food_points$", str(agent2_points["Food"]))
+            prompt = prompt.replace("$water_points$", str(agent2_points["Water"]))
+            prompt = prompt.replace("$fire_points$", str(agent2_points["Firewood"]))
 
         return prompt
 
     def get_prompt_dnd(self, instance, template, agent):
         dialogue = ""
-        dialogue_list = str(instance['dialogue']).split(" <eos> ")
+        dialogue_list = str(instance["dialogue"]).split(" <eos> ")
         for turn in dialogue_list[:-1]:
             dialogue += turn + "\n"
 
-        you_value = instance['input']['value']
-        them_value = instance['partner_input']['value']
-        counts = instance['input']['count']
+        you_value = instance["input"]["value"]
+        them_value = instance["partner_input"]["value"]
+        counts = instance["input"]["count"]
 
         prompt = template.replace("$dialogue$", dialogue)
         prompt = prompt.replace("$num_books$", str(counts[0]))
@@ -732,12 +871,12 @@ class WBaseTaskHandler:
 
     def get_prompt_da_dnd(self, instance, template):
         dialogue = ""
-        for i in range(len(instance['events'])):
-            if isinstance(instance['events'][i]['data'], str):
-                if instance['events'][i]['agent'] == 0:
-                    dialogue += "Agent 1: " + instance['events'][i]['data'] + "\n"
+        for i in range(len(instance["events"])):
+            if isinstance(instance["events"][i]["data"], str):
+                if instance["events"][i]["agent"] == 0:
+                    dialogue += "Agent 1: " + instance["events"][i]["data"] + "\n"
                 else:
-                    dialogue += "Agent 2: " + instance['events'][i]['data'] + "\n"
+                    dialogue += "Agent 2: " + instance["events"][i]["data"] + "\n"
         return template.replace("$dialogue$", dialogue)
 
     def get_prompt_with_bids_ji(self, instance, template):
@@ -747,7 +886,9 @@ class WBaseTaskHandler:
             comments_dict[comment.created_at] = comment_str
         bids_dict = {}
         for bid in instance.bids:
-            bid_str = bid.user.context["role"] + ": < propose > " + str(bid.options) + "\n"
+            bid_str = (
+                bid.user.context["role"] + ": < propose > " + str(bid.options) + "\n"
+            )
             if bid.accepted:
                 if bid.user.context["role"] == "worker":
                     bid_response_str = "recruiter: < accept bid >\n"
@@ -774,7 +915,10 @@ class WBaseTaskHandler:
         dialogue_lines = full_dialogue.split("\n")
         dialogue_lines = [line.strip() for line in dialogue_lines if line.strip() != ""]
 
-        if "< accept bid >" in dialogue_lines[-1] or "< reject bid >" in dialogue_lines[-1]:
+        if (
+            "< accept bid >" in dialogue_lines[-1]
+            or "< reject bid >" in dialogue_lines[-1]
+        ):
             assert "< propose >" in dialogue_lines[-2]
             dialogue_lines_final = dialogue_lines[:-2]
         else:
@@ -788,9 +932,13 @@ class WBaseTaskHandler:
 
         agent = "worker"
         if instance.users[0].context["role"] == agent:
-            weights_list = {d["name"]: d["weight"] for d in instance.users[0].context["utilities"]}
+            weights_list = {
+                d["name"]: d["weight"] for d in instance.users[0].context["utilities"]
+            }
         elif instance.users[1].context["role"] == agent:
-            weights_list = {d["name"]: d["weight"] for d in instance.users[1].context["utilities"]}
+            weights_list = {
+                d["name"]: d["weight"] for d in instance.users[1].context["utilities"]
+            }
 
         wdict = copy.deepcopy(weights_list)
         wdict["position"] = wdict.pop("Position")
@@ -799,14 +947,33 @@ class WBaseTaskHandler:
         wdict["days_off"] = wdict.pop("Weekly holiday")
         wdict["workplace"] = wdict.pop("Workplace")
 
-        temp_filled = temp_filled.replace("$pos_weight$", str(round(wdict["position"], 3)))
-        temp_filled = temp_filled.replace("$comp_weight$", str(round(wdict["company"], 3)))
-        temp_filled = temp_filled.replace("$salary_weight$", str(round(wdict["salary"], 3)))
-        temp_filled = temp_filled.replace("$workplace_weight$", str(round(wdict["workplace"], 3)))
-        temp_filled = temp_filled.replace("$days_off_weight$", str(round(wdict["days_off"], 3)))
+        temp_filled = temp_filled.replace(
+            "$pos_weight$", str(round(wdict["position"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$comp_weight$", str(round(wdict["company"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$salary_weight$", str(round(wdict["salary"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$workplace_weight$", str(round(wdict["workplace"], 3))
+        )
+        temp_filled = temp_filled.replace(
+            "$days_off_weight$", str(round(wdict["days_off"], 3))
+        )
         return temp_filled
 
-    def log_everything(self, stats, prompts, predictions, ground_truth, outputs_dict, dataset_handler, model_handler):
+    def log_everything(
+        self,
+        stats,
+        prompts,
+        predictions,
+        ground_truth,
+        outputs_dict,
+        dataset_handler,
+        model_handler,
+    ):
         if model_handler.multishot:
             storage = {
                 "ground truth": ground_truth[2:],
@@ -823,21 +990,21 @@ class WBaseTaskHandler:
                 "outputs_dict": outputs_dict,
             }
 
-        mname = model_handler.name
-        if model_handler.name == "hf_model":
-            mname = model_handler.args.hf_model_str.replace("/", "_")
-        elif model_handler.name == "open_ai":
-            mname = model_handler.args.openai_model_str
-        elif model_handler.name == "local_model":
-            mname = model_handler.display_name
+        mname = _model_display_name(model_handler)
 
         out_path = utils.get_output_path(
-            self.args.storage_dir, dataset_handler.name, mname,
-            self.name, self.args.num_instances, args=self.args
+            self.args.storage_dir,
+            dataset_handler.name,
+            mname,
+            self.name,
+            self.args.num_instances,
+            args=self.args,
         )
         utils.write_json(storage, out_path)
 
-    def get_final_outputs(self, outputs_dict, possible_outputs, prompts, ground_truth, cot_bool=False):
+    def get_final_outputs(
+        self, outputs_dict, possible_outputs, prompts, ground_truth, cot_bool=False
+    ):
         final_prompts, final_predictions, final_ground_truth = [], [], []
 
         for prompt, gt in zip(prompts, ground_truth):
@@ -858,7 +1025,12 @@ class WBaseTaskHandler:
 
             if answer.strip() in possible_outputs:
                 final_predictions.append(answer.strip())
-            elif any([po in answer.replace("YOU", "a").replace("THEM", "a") for po in possible_outputs]):
+            elif any(
+                [
+                    po in answer.replace("YOU", "a").replace("THEM", "a")
+                    for po in possible_outputs
+                ]
+            ):
                 list_of_words = []
                 for word in answer.replace("YOU", "a").replace("THEM", "a").split(" "):
                     flags_for_word = [po for po in possible_outputs if po in word]
@@ -870,7 +1042,9 @@ class WBaseTaskHandler:
 
         return final_prompts, final_predictions, final_ground_truth
 
-    def get_final_outputs_dict(self, outputs_dict, possible_keys, possible_outputs, prompts, ground_truth):
+    def get_final_outputs_dict(
+        self, outputs_dict, possible_keys, possible_outputs, prompts, ground_truth
+    ):
         final_prompts, final_predictions, final_ground_truth = [], [], []
 
         for prompt, gt in zip(prompts, ground_truth):
@@ -894,10 +1068,19 @@ class WBaseTaskHandler:
                     v = str(v)
                     if v in possible_outputs:
                         pred[k] = v
-                    elif any([po in v.replace("YOU", "a").replace("THEM", "a") for po in possible_outputs]):
+                    elif any(
+                        [
+                            po in v.replace("YOU", "a").replace("THEM", "a")
+                            for po in possible_outputs
+                        ]
+                    ):
                         list_of_words = []
-                        for word in v.replace("YOU", "a").replace("THEM", "a").split(" "):
-                            flags_for_word = [po for po in possible_outputs if po in word]
+                        for word in (
+                            v.replace("YOU", "a").replace("THEM", "a").split(" ")
+                        ):
+                            flags_for_word = [
+                                po for po in possible_outputs if po in word
+                            ]
                             if flags_for_word:
                                 list_of_words.append(flags_for_word[-1])
                         pred[k] = list_of_words[-1]
@@ -910,8 +1093,8 @@ class WBaseTaskHandler:
         return final_prompts, final_predictions, final_ground_truth
 
     def get_partial_dial_ca(self, num_utt, instance, prompt_template):
-        logs = instance['chat_logs']
-        participant_info = instance['participant_info']
+        logs = instance["chat_logs"]
+        participant_info = instance["participant_info"]
         eval_agent = "mturk_agent_1"
 
         dialogue = self._build_ca_dialogue(logs, eval_agent, limit=num_utt)
@@ -926,9 +1109,9 @@ class WBaseTaskHandler:
 
         def priority2points(d):
             for k, v in d.items():
-                if v == 'Low':
+                if v == "Low":
                     d[k] = 3
-                elif v == 'Medium':
+                elif v == "Medium":
                     d[k] = 4
                 else:
                     d[k] = 5
@@ -936,9 +1119,9 @@ class WBaseTaskHandler:
 
         agent1_points = priority2points(agent1_switched)
         prompt = prompt_template.replace("$dialogue$", dialogue)
-        prompt = prompt.replace("$food_points$", str(agent1_points['Food']))
-        prompt = prompt.replace("$water_points$", str(agent1_points['Water']))
-        prompt = prompt.replace("$fire_points$", str(agent1_points['Firewood']))
+        prompt = prompt.replace("$food_points$", str(agent1_points["Food"]))
+        prompt = prompt.replace("$water_points$", str(agent1_points["Water"]))
+        prompt = prompt.replace("$fire_points$", str(agent1_points["Firewood"]))
         return prompt
 
     def get_partial_dial_dnd(self, num_utt, instance, dialogue_list, prompt_template):
@@ -949,8 +1132,8 @@ class WBaseTaskHandler:
         for utt in history:
             dialogue += utt.strip() + "\n"
 
-        value = instance['input']['value']
-        counts = instance['input']['count']
+        value = instance["input"]["value"]
+        counts = instance["input"]["count"]
 
         prompt = prompt_template.replace("$dialogue$", dialogue)
         prompt = prompt.replace("$num_books$", str(counts[0]))

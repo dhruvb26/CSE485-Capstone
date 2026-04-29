@@ -17,47 +17,47 @@ def _fmt(val, fmt: str = ".2f", suffix: str = "") -> str:
 
 
 def print_matchup_report(summary: dict) -> None:
-    o = summary["overall"]
+    o = summary.get("overall", {})
 
     lines = Text()
-    lines.append(f"Episodes:          {o['total_episodes']}\n")
+    lines.append(f"Episodes:          {o.get('total_episodes', 0)}\n")
     lines.append(
-        f"Deal rate:         {_fmt(o['deal_rate'], '.1%')}  ({o['deal_count']})\n"
+        f"Deal rate:         {_fmt(o.get('deal_rate'), '.1%')}  ({o.get('deal_count', 0)})\n"
     )
     lines.append(
-        f"Walk-away rate:    {_fmt(o['walk_away_rate'], '.1%')}  ({o['walk_away_count']})\n"
+        f"Walk-away rate:    {_fmt(o.get('walk_away_rate'), '.1%')}  ({o.get('walk_away_count', 0)})\n"
     )
     lines.append(
-        f"Reject-loop rate:  {_fmt(o['reject_loop_rate'], '.1%')}  ({o['reject_loop_count']})\n"
+        f"Reject-loop rate:  {_fmt(o.get('reject_loop_rate'), '.1%')}  ({o.get('reject_loop_count', 0)})\n"
     )
     lines.append(
-        f"Max-turns rate:    {_fmt(o['max_turns_rate'], '.1%')}  ({o['max_turns_count']})\n"
+        f"Max-turns rate:    {_fmt(o.get('max_turns_rate'), '.1%')}  ({o.get('max_turns_count', 0)})\n"
     )
     lines.append("\n")
     lines.append(
-        f"Avg learner pts:   {_fmt(o['avg_learner_points'])}  (std {_fmt(o['std_learner_points'])})\n"
+        f"Avg learner pts:   {_fmt(o.get('avg_learner_points'))}  (std {_fmt(o.get('std_learner_points'))})\n"
     )
-    lines.append(f"Avg opponent pts:  {_fmt(o['avg_opponent_points'])}\n")
-    lines.append(f"Avg joint score:   {_fmt(o['avg_joint_score'])}\n")
-    lines.append(f"Avg score ratio:   {_fmt(o['avg_score_ratio'], '.3f')}\n")
-    lines.append(f"Avg turns (deal):  {_fmt(o['avg_turns_to_deal'])}\n")
-    lines.append(f"Avg turns (all):   {_fmt(o['avg_turns_all'])}\n")
-    lines.append(f"Points/turn:       {_fmt(o['points_per_turn'], '.3f')}\n")
+    lines.append(f"Avg opponent pts:  {_fmt(o.get('avg_opponent_points'))}\n")
+    lines.append(f"Avg joint score:   {_fmt(o.get('avg_joint_score'))}\n")
+    lines.append(f"Avg score ratio:   {_fmt(o.get('avg_score_ratio'), '.3f')}\n")
+    lines.append(f"Avg turns (deal):  {_fmt(o.get('avg_turns_to_deal'))}\n")
+    lines.append(f"Avg turns (all):   {_fmt(o.get('avg_turns_all'))}\n")
+    lines.append(f"Points/turn:       {_fmt(o.get('points_per_turn'), '.3f')}\n")
     lines.append("\n")
     lines.append(
-        f"Learner format:    {_fmt(o['learner_format_rate'], '.1%')}  ({o['learner_total_turns']} turns)\n"
+        f"Learner format:    {_fmt(o.get('learner_format_rate'), '.1%')}  ({o.get('learner_total_turns', 0)} turns)\n"
     )
     lines.append(
-        f"Learner bad deals: {_fmt(o['learner_malformed_deal_rate'], '.1%')}\n"
+        f"Learner bad deals: {_fmt(o.get('learner_malformed_deal_rate'), '.1%')}\n"
     )
     lines.append(
-        f"Opponent format:   {_fmt(o['opponent_format_rate'], '.1%')}  ({o['opponent_total_turns']} turns)\n"
+        f"Opponent format:   {_fmt(o.get('opponent_format_rate'), '.1%')}  ({o.get('opponent_total_turns', 0)} turns)\n"
     )
     lines.append(
-        f"Opponent bad deals:{_fmt(o['opponent_malformed_deal_rate'], '.1%')}\n"
+        f"Opponent bad deals:{_fmt(o.get('opponent_malformed_deal_rate'), '.1%')}\n"
     )
 
-    title = summary["matchup"]
+    title = summary.get("matchup", "")
     if summary.get("dataset"):
         title = f"{title}  [{summary['dataset']}]"
     panel = Panel(lines, title=title, border_style="blue", padding=(1, 2))
@@ -78,14 +78,14 @@ def print_matchup_report(summary: dict) -> None:
         for persona, pm in summary["per_persona"].items():
             table.add_row(
                 persona,
-                _fmt(pm["deal_rate"], ".0%"),
-                _fmt(pm["avg_learner_points"]),
-                _fmt(pm["avg_opponent_points"]),
-                _fmt(pm["avg_score_ratio"], ".3f"),
-                _fmt(pm["avg_joint_score"], ".1f"),
-                _fmt(pm["avg_turns_to_deal"]),
-                _fmt(pm["learner_format_rate"], ".0%"),
-                str(pm["total_episodes"]),
+                _fmt(pm.get("deal_rate"), ".0%"),
+                _fmt(pm.get("avg_learner_points")),
+                _fmt(pm.get("avg_opponent_points")),
+                _fmt(pm.get("avg_score_ratio"), ".3f"),
+                _fmt(pm.get("avg_joint_score"), ".1f"),
+                _fmt(pm.get("avg_turns_to_deal")),
+                _fmt(pm.get("learner_format_rate"), ".0%"),
+                str(pm.get("total_episodes", 0)),
             )
         console.print(table)
     console.print()
@@ -108,18 +108,18 @@ def print_comparison_table(all_summaries: dict) -> None:
     table.add_column("Format%", justify="right")
 
     for name, s in all_summaries.items():
-        o = s["overall"]
+        o = s.get("overall", {})
         table.add_row(
             name,
-            s.get("dataset") or "—",
-            _fmt(o["deal_rate"], ".1%"),
-            _fmt(o["avg_learner_points"]),
-            _fmt(o["avg_opponent_points"]),
-            _fmt(o["avg_joint_score"]),
-            _fmt(o["avg_score_ratio"], ".3f"),
-            _fmt(o["avg_turns_to_deal"]),
-            _fmt(o["points_per_turn"], ".3f"),
-            _fmt(o["learner_format_rate"], ".1%"),
+            s.get("dataset") or "\u2014",
+            _fmt(o.get("deal_rate"), ".1%"),
+            _fmt(o.get("avg_learner_points")),
+            _fmt(o.get("avg_opponent_points")),
+            _fmt(o.get("avg_joint_score")),
+            _fmt(o.get("avg_score_ratio"), ".3f"),
+            _fmt(o.get("avg_turns_to_deal")),
+            _fmt(o.get("points_per_turn"), ".3f"),
+            _fmt(o.get("learner_format_rate"), ".1%"),
         )
 
     console.print(table)
@@ -157,3 +157,25 @@ def print_task_scores(results: list[dict]) -> None:
 
         console.print(table)
         console.print()
+
+    total = sum(len(rows) for rows in by_model.values())
+    console.print(f"[dim]{total} task results across {len(by_model)} model-dataset pairs[/dim]")
+    console.print()
+
+
+def print_available_tasks(supported_configs: set) -> None:
+    datasets: dict[str, set[str]] = {}
+    for ds, _model, task in supported_configs:
+        datasets.setdefault(ds, set()).add(task)
+
+    table = Table(title="Available Tasks", border_style="blue", show_lines=True)
+    table.add_column("Dataset", style="cyan bold")
+    table.add_column("Tasks")
+    table.add_column("Count", justify="right", style="dim")
+
+    for ds in sorted(datasets):
+        tasks = sorted(datasets[ds])
+        table.add_row(ds, ", ".join(tasks), str(len(tasks)))
+
+    console.print(table)
+    console.print()

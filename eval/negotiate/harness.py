@@ -29,7 +29,8 @@ from rich.progress import (
 )
 
 from eval.display import print_comparison_table, print_matchup_report
-from eval.envs import NegotiateEnv, get_env
+
+from .envs import NegotiateEnv, get_env
 
 try:
     import torch
@@ -571,8 +572,10 @@ def run_episode(
             result.num_turns = turn_index + 1
             break
 
+        whose_msgs = learner_msgs if is_learner_turn else opponent_msgs
+        who_label = "learner" if is_learner_turn else "opponent"
         recent_deals: list[str] = []
-        for msg in reversed(learner_msgs):
+        for msg in reversed(whose_msgs):
             if msg["role"] != "assistant":
                 continue
             a = extract_section(strip_think_block(msg["content"]), "Action")
@@ -582,7 +585,7 @@ def run_episode(
                 break
         if len(recent_deals) >= 3 and len(set(recent_deals)) == 1:
             result.outcome = "reject_loop"
-            result.who_terminated = "learner"
+            result.who_terminated = who_label
             result.num_turns = turn_index + 1
             break
     else:
@@ -626,7 +629,10 @@ def run_evaluation(cfg: dict) -> dict:
     logger.info(f"Negotiation dataset: {dataset}")
 
     ts = time.strftime("%Y%m%d_%H%M%S")
-    output_dir = Path(cfg.get("output_dir", "logs/negotiate")) / f"run_{ts}"
+    output_dir = (
+        Path(cfg.get("storage_dir", cfg.get("output_dir", "logs/negotiate")))
+        / f"run_{ts}"
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     scenarios = env.load_scenarios(cfg["csv_path"])
