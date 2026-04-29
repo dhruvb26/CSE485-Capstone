@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=eval
-#SBATCH -p htc
+#SBATCH -p public
 #SBATCH -q public
 #SBATCH -A grp_ywang354
-#SBATCH -t 3:00:00
+#SBATCH -t 8:00:00
 #SBATCH --gres=gpu:a30:1
 #SBATCH --mem=32G
 #SBATCH -c 8
-#SBATCH --output=logs/jobs/slurm_%j.out
-#SBATCH --error=logs/jobs/slurm_%j.err
+#SBATCH --output=logs/jobs/eval_%j.out
+#SBATCH --error=logs/jobs/eval_%j.err
 
 set -euo pipefail
 
